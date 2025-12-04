@@ -1,8 +1,15 @@
-import { Stack } from 'expo-router';
-import { ConnectionStatus } from '../src/components/ConnectionStatus';
-import { View } from 'react-native';
+import { Stack } from "expo-router";
+import { ConnectionStatus } from "@/src/components/ConnectionStatus";
+import { View } from "react-native";
+import { useEffect } from "react";
+import { chatDatabaseService } from "@/src/services/chatDatabase";
 
 export default function Layout() {
+  // initialize sqlite chat db when app loads
+  useEffect(() => {
+    chatDatabaseService.initializeDatabase();
+  }, []);
+
   return (
     <View className="flex-1 bg-gray-50">
       <ConnectionStatus />
