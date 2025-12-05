@@ -1,3 +1,4 @@
+import "../styles/global.css";
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Link } from 'expo-router';
 
