@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,18 +7,19 @@ import {
   FlatList,
   Alert,
   ActivityIndicator,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useCollaborative } from '@/src/hooks/useCollaborative';
-import { PresenceIndicators } from '@/src/components/PresenceIndicators';
-import { CollaborativeTaskItem } from '@/src/components/CollaborativeTaskItem';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useCollaborative } from "@/src/hooks/useCollaborative";
+import { PresenceIndicators } from "@/src/components/PresenceIndicators";
+import { CollaborativeTaskItem } from "@/src/components/CollaborativeTaskItem";
+import { ConnectionStatus } from "@/src/components/ConnectionStatus";
 
 // You would get these from user authentication
-const CURRENT_USER_ID = 'user_123';
-const ROOM_ID = 'shared_tasks';
+const CURRENT_USER_ID = "user_123";
+const ROOM_ID = "shared_tasks";
 
 export default function CollaborativeTasksScreen() {
-  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskTitle, setNewTaskTitle] = useState("");
   const [isAddingTask, setIsAddingTask] = useState(false);
 
   const {
@@ -38,55 +39,58 @@ export default function CollaborativeTasksScreen() {
   useEffect(() => {
     const handleFocus = () => setUserActivity(true);
     const handleBlur = () => setUserActivity(false);
-    
+
     // For web
-    if (typeof window !== 'undefined') {
-      window.addEventListener('focus', handleFocus);
-      window.addEventListener('blur', handleBlur);
-      
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", handleFocus);
+      window.addEventListener("blur", handleBlur);
+
       return () => {
-        window.removeEventListener('focus', handleFocus);
-        window.removeEventListener('blur', handleBlur);
+        window.removeEventListener("focus", handleFocus);
+        window.removeEventListener("blur", handleBlur);
       };
     }
   }, [setUserActivity]);
 
   const handleAddTask = async () => {
     if (!newTaskTitle.trim() || isAddingTask) return;
-    
+
     setIsAddingTask(true);
     try {
-      const taskId = `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const taskId = `task_${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
       await addTask(taskId, {
         id: taskId,
         title: newTaskTitle.trim(),
         completed: false,
         createdAt: new Date().toISOString(),
       });
-      setNewTaskTitle('');
+      setNewTaskTitle("");
     } catch (error) {
-      console.error('Error adding task:', error);
-      Alert.alert('Error', 'Failed to add task. Please try again.');
+      console.error("Error adding task:", error);
+      Alert.alert("Error", "Failed to add task. Please try again.");
     } finally {
       setIsAddingTask(false);
     }
   };
 
   const getEditLockInfo = (taskId: string) => {
-    const lock = editLocks.find(l => l.field === `task_${taskId}_title`);
+    const lock = editLocks.find((l) => l.field === `task_${taskId}_title`);
     return {
       isLocked: !!lock,
       lockedBy: lock?.userName,
     };
   };
 
-  const tasks = Object.values(sharedState.tasks || {}).sort((a: any, b: any) => 
-    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  const tasks = Object.values(sharedState.tasks || {}).sort(
+    (a: any, b: any) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
   const renderTask = ({ item }: { item: any }) => {
     const lockInfo = getEditLockInfo(item.id);
-    
+
     return (
       <CollaborativeTaskItem
         task={item}
@@ -107,33 +111,16 @@ export default function CollaborativeTasksScreen() {
         <Text className="text-3xl md:text-4xl font-bold text-center mb-8 text-gray-800 dark:text-white">
           Collaborative Tasks
         </Text>
-        
+
         {/* Connection Status */}
-        <View className={`rounded-lg p-3 mb-4 ${
-          isConnected 
-            ? 'bg-green-100 dark:bg-green-900/20' 
-            : 'bg-red-100 dark:bg-red-900/20'
-        }`}>
-          <View className="flex-row items-center justify-center">
-            <View className={`w-2 h-2 rounded-full mr-2 ${
-              isConnected ? 'bg-green-500' : 'bg-red-500'
-            }`} />
-            <Text className={`text-sm font-medium ${
-              isConnected 
-                ? 'text-green-700 dark:text-green-300' 
-                : 'text-red-700 dark:text-red-300'
-            }`}>
-              {isConnected ? 'Live collaboration active' : 'Connecting...'}
-            </Text>
-          </View>
-        </View>
+        <ConnectionStatus />
 
         {/* Presence Indicators */}
-        <PresenceIndicators 
+        <PresenceIndicators
           participants={participants}
           currentUserId={CURRENT_USER_ID}
         />
-        
+
         {/* Add Task Input */}
         <View className="flex-row mb-5 md:mb-6">
           <TextInput
@@ -145,15 +132,12 @@ export default function CollaborativeTasksScreen() {
             onSubmitEditing={handleAddTask}
             editable={!isAddingTask}
           />
-          <TouchableOpacity 
+          <TouchableOpacity
             className={`rounded-lg px-5 py-3 md:px-6 md:py-4 justify-center ${
-              isAddingTask 
-                ? 'bg-gray-400' 
-                : 'bg-blue-500 active:bg-blue-600'
+              isAddingTask ? "bg-gray-400" : "bg-blue-500 active:bg-blue-600"
             }`}
             onPress={handleAddTask}
-            disabled={isAddingTask || !newTaskTitle.trim()}
-          >
+            disabled={isAddingTask || !newTaskTitle.trim()}>
             {isAddingTask ? (
               <ActivityIndicator size="small" color="white" />
             ) : (
@@ -172,7 +156,7 @@ export default function CollaborativeTasksScreen() {
           ListEmptyComponent={
             <View className="items-center py-8">
               <Text className="text-gray-500 dark:text-gray-400 text-center">
-                No collaborative tasks yet.{'\n'}Add one to get started!
+                No collaborative tasks yet.{"\n"}Add one to get started!
               </Text>
             </View>
           }
@@ -181,10 +165,12 @@ export default function CollaborativeTasksScreen() {
         {/* Summary */}
         <View className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
           <Text className="text-center text-blue-700 dark:text-blue-300 text-sm font-medium">
-            {tasks.length} total tasks • {tasks.filter((t: any) => !t.completed).length} pending
+            {tasks.length} total tasks •{" "}
+            {tasks.filter((t: any) => !t.completed).length} pending
             {isConnected && participants.length > 0 && (
               <Text className="text-green-600 dark:text-green-400">
-                {' '}• {participants.length + 1} collaborators
+                {" "}
+                • {participants.length + 1} collaborators
               </Text>
             )}
           </Text>

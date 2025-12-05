@@ -1,4 +1,7 @@
-import { socketService } from "@/src/services/socketService";
+// client/src/services/collaborativeService.ts
+import { socketService } from "./socketService";
+import { connectionManager, ConnectionState } from "./connectionManager";
+import { chatDatabaseService } from "./chatDatabase";
 
 export interface CollaborativeOperation {
   type: "SET_VALUE" | "UPDATE_TASK" | "ADD_TASK" | "DELETE_TASK";
@@ -10,6 +13,7 @@ export interface CollaborativeOperation {
   userId: string;
   clientId?: string;
 }
+
 export interface Participant {
   userId: string;
   userName: string;
@@ -18,13 +22,15 @@ export interface Participant {
   selection?: { start: number; end: number };
   lastActivity: string;
 }
+
 export interface EditLock {
   field: string;
   userId: string;
   userName: string;
 }
+
 export interface CollaborativeState {
-  tasks: { [taskId: string]: any };
+  tasks: { [taskId: string]: any & { syncStatus?: "synced" | "pending" | "failed" | "conflict" } };
   [key: string]: any;
 }
 
@@ -32,107 +38,77 @@ class CollaborativeService {
   private currentUserId: string | null = null;
   private currentRoomId: string | null = null;
   private localState: CollaborativeState = { tasks: {} };
-  private pendingOperations: CollaborativeOperation[] = [];
-  private isConnected: boolean = false;
+  private pendingOperations: Map<string, CollaborativeOperation> = new Map();
 
   // Event listeners
   private stateListeners: ((state: CollaborativeState) => void)[] = [];
   private participantListeners: ((participants: Participant[]) => void)[] = [];
   private lockListeners: ((locks: EditLock[]) => void)[] = [];
   private presenceListeners: ((userId: string, presence: any) => void)[] = [];
+
   async initialize(userId: string, roomId: string): Promise<void> {
     this.currentUserId = userId;
     this.currentRoomId = roomId;
 
+    await chatDatabaseService.initializeDatabase();
     this.setupSocketListeners();
+    this.setupConnectionListeners();
 
-    // Join collaborative room
-    socketService.emit("join_collaborative_room", {
-      roomId,
-      userId,
-      userName: "User " + userId, // You'd get this from user profile
+    await connectionManager.connect();
+
+    if (connectionManager.isConnected()) {
+      this.joinRoom();
+    }
+  }
+
+  private setupConnectionListeners(): void {
+    connectionManager.onConnectionChange((info) => {
+      if (info.state === ConnectionState.CONNECTED && this.currentRoomId) {
+        this.joinRoom();
+      }
     });
   }
 
   private setupSocketListeners(): void {
-    // Handle initial state sync
-    socketService.on(
-      "collaborative_state_sync",
-      (data: {
-        roomId: string;
-        sharedState: CollaborativeState;
-        operationHistory: CollaborativeOperation[];
-        participants: Participant[];
-        activeEditors: { [field: string]: EditLock };
-      }) => {
+    socketService.on("collaborative_state_sync", (data: any) => {
+      this.localState = { ...data.sharedState };
+      this.notifyStateListeners();
+      this.notifyParticipantListeners(data.participants || []);
+      this.notifyLockListeners(Object.values(data.activeEditors || {}));
+    });
+
+    socketService.on("operation_applied", (data: { operation: CollaborativeOperation; sharedState: CollaborativeState }) => {
+      if (data.operation.userId !== this.currentUserId) {
         this.localState = { ...data.sharedState };
-        this.isConnected = true;
-
-        // Apply any pending operations
-        this.flushPendingOperations();
-
-        // Notify listeners
         this.notifyStateListeners();
-        this.notifyParticipantListeners(data.participants);
-        this.notifyLockListeners(Object.values(data.activeEditors));
       }
-    );
+    });
 
-    // Handle operations from other users
-    socketService.on(
-      "operation_applied",
-      (data: {
-        operation: CollaborativeOperation;
-        sharedState: CollaborativeState;
-      }) => {
-        // Don't apply operations from ourselves
-        if (data.operation.userId !== this.currentUserId) {
-          this.localState = { ...data.sharedState };
-          this.notifyStateListeners();
-        }
-      }
-    );
+    socketService.on("participants_updated", (data: { participants: Participant[] }) => {
+      this.notifyParticipantListeners(data.participants);
+    });
 
-    // Handle participant updates
-    socketService.on(
-      "participants_updated",
-      (data: { participants: Participant[] }) => {
-        this.notifyParticipantListeners(data.participants);
-      }
-    );
-
-    // Handle field locking
     socketService.on("field_locked", (data: EditLock) => {
-      // Update UI to show field is being edited
       this.notifyLockListeners([data]);
     });
-    socketService.on(
-      "field_unlocked",
-      (data: { field: string; userId: string }) => {
-        // Update UI to show field is available
-        this.notifyLockListeners([]);
-      }
-    );
 
-    // Handle presence updates
-    socketService.on(
-      "presence_updated",
-      (data: { userId: string; presenceData: any; timestamp: string }) => {
-        this.notifyPresenceListeners(data.userId, data.presenceData);
-      }
-    );
-
-    // Handle connection state
-    socketService.on("connect", () => {
-      this.isConnected = true;
-      this.flushPendingOperations();
+    socketService.on("field_unlocked", () => {
+      this.notifyLockListeners([]);
     });
-    socketService.on("disconnect", () => {
-      this.isConnected = false;
+
+    socketService.on("presence_updated", (data: { userId: string; presenceData: any }) => {
+      this.notifyPresenceListeners(data.userId, data.presenceData);
     });
   }
 
-  // Public API for making collaborative changes
+  private joinRoom(): void {
+    socketService.emit("join_collaborative_room", {
+      roomId: this.currentRoomId,
+      userId: this.currentUserId,
+      userName: "User " + this.currentUserId,
+    });
+  }
+
   async updateTask(taskId: string, updates: any): Promise<void> {
     const operation: CollaborativeOperation = {
       type: "UPDATE_TASK",
@@ -142,17 +118,19 @@ class CollaborativeService {
       clientId: this.generateClientId(),
     };
 
-    // Apply optimistically to local state
     this.applyOperationLocally(operation);
+    if (this.localState.tasks[taskId]) {
+      this.localState.tasks[taskId].syncStatus = "pending";
+      this.notifyStateListeners();
+    }
 
-    // Send to server or queue if offline
-    if (this.isConnected) {
-      socketService.emit("collaborative_operation", {
-        roomId: this.currentRoomId,
-        operation,
-      });
+    if (connectionManager.isConnected()) {
+      socketService.emit("collaborative_operation", { roomId: this.currentRoomId, operation });
     } else {
-      this.pendingOperations.push(operation);
+      connectionManager.queueOperation({
+        type: "collaborative_operation",
+        data: { roomId: this.currentRoomId, operation },
+      });
     }
   }
 
@@ -160,23 +138,21 @@ class CollaborativeService {
     const operation: CollaborativeOperation = {
       type: "ADD_TASK",
       taskId,
-      task: {
-        ...task,
-        createdBy: this.currentUserId,
-        createdAt: new Date().toISOString(),
-      },
+      task: { ...task, syncStatus: "pending" },
       userId: this.currentUserId!,
       clientId: this.generateClientId(),
     };
-    this.applyOperationLocally(operation);
 
-    if (this.isConnected) {
-      socketService.emit("collaborative_operation", {
-        roomId: this.currentRoomId,
-        operation,
-      });
+    this.applyOperationLocally(operation);
+    this.notifyStateListeners();
+
+    if (connectionManager.isConnected()) {
+      socketService.emit("collaborative_operation", { roomId: this.currentRoomId, operation });
     } else {
-      this.pendingOperations.push(operation);
+      connectionManager.queueOperation({
+        type: "collaborative_operation",
+        data: { roomId: this.currentRoomId, operation },
+      });
     }
   }
 
@@ -187,73 +163,46 @@ class CollaborativeService {
       userId: this.currentUserId!,
       clientId: this.generateClientId(),
     };
-    this.applyOperationLocally(operation);
 
-    if (this.isConnected) {
-      socketService.emit("collaborative_operation", {
-        roomId: this.currentRoomId,
-        operation,
-      });
+    if (this.localState.tasks[taskId]) {
+      this.localState.tasks[taskId].deleted = true;
+      this.localState.tasks[taskId].syncStatus = "pending";
+      this.notifyStateListeners();
+    }
+
+    if (connectionManager.isConnected()) {
+      socketService.emit("collaborative_operation", { roomId: this.currentRoomId, operation });
     } else {
-      this.pendingOperations.push(operation);
+      connectionManager.queueOperation({
+        type: "collaborative_operation",
+        data: { roomId: this.currentRoomId, operation },
+      });
     }
   }
 
-  // Edit locking for preventing conflicts
   async requestEditLock(field: string): Promise<boolean> {
     return new Promise((resolve) => {
-      socketService.emit("request_edit_lock", {
-        roomId: this.currentRoomId,
-        field,
-        userId: this.currentUserId,
-      });
-
-      // Listen for response
-      const handleResponse = (data: {
-        success: boolean;
-        field: string;
-        currentEditor?: string;
-      }) => {
+      socketService.emit("request_edit_lock", { roomId: this.currentRoomId, field, userId: this.currentUserId });
+      const handler = (data: { success: boolean; field: string }) => {
         if (data.field === field) {
-          socketService.off("edit_lock_response", handleResponse);
+          socketService.off("edit_lock_response", handler);
           resolve(data.success);
         }
       };
-      socketService.on("edit_lock_response", handleResponse);
+      socketService.on("edit_lock_response", handler);
     });
   }
 
   async releaseEditLock(field: string): Promise<void> {
-    socketService.emit("release_edit_lock", {
-      roomId: this.currentRoomId,
-      field,
-      userId: this.currentUserId,
-    });
+    socketService.emit("release_edit_lock", { roomId: this.currentRoomId, field, userId: this.currentUserId });
   }
 
-  // Presence management
-  updatePresence(presenceData: {
-    cursor?: { x: number; y: number };
-    selection?: any;
-  }): void {
-    socketService.emit("update_presence", {
-      roomId: this.currentRoomId,
-      userId: this.currentUserId,
-      presenceData,
-    });
+  updatePresence(presenceData: any): void {
+    socketService.emit("update_presence", { roomId: this.currentRoomId, userId: this.currentUserId, presenceData });
   }
 
   setUserActivity(isActive: boolean): void {
-    socketService.emit("user_activity_change", {
-      roomId: this.currentRoomId,
-      userId: this.currentUserId,
-      isActive,
-    });
-  }
-
-  // State management
-  getState(): CollaborativeState {
-    return this.localState;
+    socketService.emit("user_activity_change", { roomId: this.currentRoomId, userId: this.currentUserId, isActive });
   }
 
   private applyOperationLocally(operation: CollaborativeOperation): void {
@@ -272,85 +221,39 @@ class CollaborativeService {
         this.localState.tasks[operation.taskId!] = operation.task;
         break;
       case "DELETE_TASK":
-        if (this.localState.tasks) {
-          delete this.localState.tasks[operation.taskId!];
-        }
+        if (this.localState.tasks) delete this.localState.tasks[operation.taskId!];
         break;
     }
-
-    this.notifyStateListeners();
-  }
-
-  private flushPendingOperations(): void {
-    const operations = [...this.pendingOperations];
-    this.pendingOperations = [];
-
-    operations.forEach((operation) => {
-      socketService.emit("collaborative_operation", {
-        roomId: this.currentRoomId,
-        operation,
-      });
-    });
   }
 
   private generateClientId(): string {
-    return `${this.currentUserId}_${Date.now()}_${Math.random()
-      .toString(36)
-      .substr(2, 9)}`;
+    return `${this.currentUserId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  // Event listener management
-  onStateChange(callback: (state: CollaborativeState) => void): () => void {
-    this.stateListeners.push(callback);
-    return () => {
-      this.stateListeners = this.stateListeners.filter((cb) => cb !== callback);
-    };
+  // Event listeners
+  onStateChange(cb: (state: CollaborativeState) => void): () => void {
+    this.stateListeners.push(cb);
+    return () => { this.stateListeners = this.stateListeners.filter(c => c !== cb); };
+  }
+  onParticipantsChange(cb: (p: Participant[]) => void): () => void {
+    this.participantListeners.push(cb);
+    return () => { this.participantListeners = this.participantListeners.filter(c => c !== cb); };
+  }
+  onLocksChange(cb: (l: EditLock[]) => void): () => void {
+    this.lockListeners.push(cb);
+    return () => { this.lockListeners = this.lockListeners.filter(c => c !== cb); };
+  }
+  onPresenceChange(cb: (id: string, p: any) => void): () => void {
+    this.presenceListeners.push(cb);
+    return () => { this.presenceListeners = this.presenceListeners.filter(c => c !== cb); };
   }
 
-  onParticipantsChange(
-    callback: (participants: Participant[]) => void
-  ): () => void {
-    this.participantListeners.push(callback);
-    return () => {
-      this.participantListeners = this.participantListeners.filter(
-        (cb) => cb !== callback
-      );
-    };
-  }
+  private notifyStateListeners() { this.stateListeners.forEach(cb => cb(this.localState)); }
+  private notifyParticipantListeners(p: Participant[]) { this.participantListeners.forEach(cb => cb(p)); }
+  private notifyLockListeners(l: EditLock[]) { this.lockListeners.forEach(cb => cb(l)); }
+  private notifyPresenceListeners(id: string, p: any) { this.presenceListeners.forEach(cb => cb(id, p)); }
 
-  onLocksChange(callback: (locks: EditLock[]) => void): () => void {
-    this.lockListeners.push(callback);
-    return () => {
-      this.lockListeners = this.lockListeners.filter((cb) => cb !== callback);
-    };
-  }
-
-  onPresenceChange(
-    callback: (userId: string, presence: any) => void
-  ): () => void {
-    this.presenceListeners.push(callback);
-    return () => {
-      this.presenceListeners = this.presenceListeners.filter(
-        (cb) => cb !== callback
-      );
-    };
-  }
-
-  private notifyStateListeners(): void {
-    this.stateListeners.forEach((callback) => callback(this.localState));
-  }
-
-  private notifyParticipantListeners(participants: Participant[]): void {
-    this.participantListeners.forEach((callback) => callback(participants));
-  }
-
-  private notifyLockListeners(locks: EditLock[]): void {
-    this.lockListeners.forEach((callback) => callback(locks));
-  }
-
-  private notifyPresenceListeners(userId: string, presence: any): void {
-    this.presenceListeners.forEach((callback) => callback(userId, presence));
-  }
+  getState(): CollaborativeState { return this.localState; }
 }
 
 export const collaborativeService = new CollaborativeService();

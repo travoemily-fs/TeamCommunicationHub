@@ -11,10 +11,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useChat } from "@/src/hooks/useChat";
 import { ChatMessage } from "@/src/services/chatDatabase";
+import { ConnectionStatus } from "@/src/components/ConnectionStatus";
 
 // You would get these from user authentication
 const CURRENT_USER_ID = "user_123";
 const CURRENT_USER_NAME = "John Doe";
+
 export default function ChatScreen() {
   const [inputText, setInputText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -32,12 +34,10 @@ export default function ChatScreen() {
   } = useChat(CURRENT_USER_ID, CURRENT_USER_NAME);
 
   useEffect(() => {
-    // Auto-join a default room for demo
     joinRoom("general", "General Chat");
   }, [joinRoom]);
 
   useEffect(() => {
-    // Scroll to bottom when new messages arrive
     if (messages.length > 0) {
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
@@ -47,7 +47,6 @@ export default function ChatScreen() {
 
   const handleSendMessage = async () => {
     if (!inputText.trim()) return;
-
     await sendMessage(inputText.trim());
     setInputText("");
     handleStopTyping();
@@ -55,7 +54,6 @@ export default function ChatScreen() {
 
   const handleTextChange = (text: string) => {
     setInputText(text);
-
     if (text.length > 0 && !isTyping) {
       setIsTyping(true);
       startTyping();
@@ -107,7 +105,7 @@ export default function ChatScreen() {
             </Text>
             {isOwnMessage && (
               <Text className="text-xs text-blue-100 ml-2">
-                {item.delivered ? "✓✓" : "✓"}
+                {item.delivered ? "Delivered" : "Sent"}
               </Text>
             )}
           </View>
@@ -118,13 +116,11 @@ export default function ChatScreen() {
 
   const renderTypingIndicator = () => {
     if (typingUsers.length === 0) return null;
-
     const typingNames = typingUsers.map((u) => u.userName).join(", ");
-
     return (
       <View className="items-start mb-3">
         <View className="bg-gray-200 dark:bg-gray-700 rounded-2xl rounded-bl-md px-4 py-2">
-          <Text className="text-gray-600 dark:text-gray-300 text-sm">
+          <Text className="text-gray-600 dark:text-gray-300 text-sm italic">
             {typingNames} {typingUsers.length === 1 ? "is" : "are"} typing...
           </Text>
         </View>
@@ -137,19 +133,18 @@ export default function ChatScreen() {
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         className="flex-1">
+        {/* CONNECTION STATUS BAR */}
+        <ConnectionStatus />
+
         {/* Header */}
-        <View className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3">
-          <Text className="text-lg font-semibold text-gray-800 dark:text-white">
-            General Chat
-          </Text>
-          <Text className="text-sm text-gray-500 dark:text-gray-400">
-            {typingUsers.length > 0
-              ? `${typingUsers.length} person${
-                  typingUsers.length > 1 ? "s" : ""
-                } typing...`
-              : "Tap to see room info"}
-          </Text>
-        </View>
+        <Text className="text-lg font-semibold text-gray-800 dark:text-white">
+          {currentRoom
+            ? currentRoom === "general"
+              ? "General Chat"
+              : currentRoom.charAt(0).toUpperCase() +
+                currentRoom.slice(1).replace(/_/g, " ")
+            : "Loading..."}
+        </Text>
 
         {/* Messages */}
         <FlatList
@@ -162,6 +157,7 @@ export default function ChatScreen() {
           onEndReached={loadMoreMessages}
           onEndReachedThreshold={0.1}
           ListFooterComponent={renderTypingIndicator}
+          showsVerticalScrollIndicator={false}
         />
 
         {/* Input */}
@@ -179,14 +175,14 @@ export default function ChatScreen() {
               maxLength={1000}
             />
             <TouchableOpacity
-              className={`rounded-full p-2 ${
+              className={`rounded-full p-3 ${
                 inputText.trim()
                   ? "bg-blue-500 active:bg-blue-600"
                   : "bg-gray-300 dark:bg-gray-600"
               }`}
               onPress={handleSendMessage}
               disabled={!inputText.trim()}>
-              <Text className="text-white font-semibold px-2">Send</Text>
+              <Text className="text-white font-bold">Send</Text>
             </TouchableOpacity>
           </View>
         </View>
