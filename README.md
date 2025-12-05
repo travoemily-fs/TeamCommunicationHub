@@ -1,8 +1,14 @@
+# Team Communication Hub
+
+Here.
+
+# Installation Guide
+
+Here.
 
 
+## Technical Submission Checklist
 
-
-Technical Submission Checklist
 - [ ] App runs on web and iOS (tested locally) - Required
 
 - [ ] Server runs and handles multiple channels and simultaneous users
