@@ -64,27 +64,6 @@ export const ConnectionStatus: React.FC = () => {
     }
   };
 
-  const getStatusText = () => {
-    switch (connectionInfo.state) {
-      case ConnectionState.CONNECTED:
-        return queuedOps.length > 0
-          ? `Connected • ${queuedOps.length} pending`
-          : "Connected • Live sync active";
-      case ConnectionState.CONNECTING:
-        return "Connecting...";
-      case ConnectionState.RECONNECTING:
-        return `Reconnecting... (attempt ${
-          connectionInfo.reconnectAttempt + 1
-        })`;
-      case ConnectionState.DISCONNECTED:
-        return connectionInfo.isOnline ? "Disconnected" : "Offline";
-      case ConnectionState.FAILED:
-        return "Connection failed";
-      default:
-        return "Unknown status";
-    }
-  };
-
   const getStatusIcon = () => {
     switch (connectionInfo.state) {
       case ConnectionState.CONNECTED:
@@ -118,17 +97,20 @@ export const ConnectionStatus: React.FC = () => {
         onPress={() => setIsExpanded(!isExpanded)}
         activeOpacity={0.7}>
         <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center flex-1">
-            <Text className="flex-1 text-gray-800 dark:text-gray-400 font-medium">
-              {getStatusIcon()} • {getStatusText()}
+          <View className="flex-row items-center">
+            <Text className="text-gray-800 dark:text-gray-400 font-medium">
+              {getStatusIcon()}
             </Text>
           </View>
 
           {(connectionInfo.state === ConnectionState.FAILED ||
             connectionInfo.state === ConnectionState.DISCONNECTED) && (
             <TouchableOpacity
-              className="bg-blue-500 rounded px-3 py-1 ml-2"
-              onPress={handleRetry}>
+              className="bg-blue-500 rounded px-3 py-3 ml-2"
+              onPress={(e) => {
+                e.stopPropagation?.();
+                handleRetry();
+              }}>
               <Text className="text-white text-sm font-medium">
                 {hasConnectedOnce ? "Retry" : "Connect"}
               </Text>
@@ -146,6 +128,7 @@ export const ConnectionStatus: React.FC = () => {
                 {connectionInfo.isOnline ? "Online" : "Offline"}
               </Text>
             </View>
+
             {connectionInfo.latency && (
               <View className="flex-row justify-between">
                 <Text className="text-sm text-gray-600 dark:text-gray-400">
@@ -156,6 +139,7 @@ export const ConnectionStatus: React.FC = () => {
                 </Text>
               </View>
             )}
+
             {connectionInfo.lastConnected && (
               <View className="flex-row justify-between">
                 <Text className="text-sm text-gray-600 dark:text-gray-400">
@@ -166,6 +150,7 @@ export const ConnectionStatus: React.FC = () => {
                 </Text>
               </View>
             )}
+
             {queuedOps.length > 0 && (
               <View className="mt-2">
                 <Text className="text-sm font-medium text-gray-800 dark:text-white mb-1">

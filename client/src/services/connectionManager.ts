@@ -1,11 +1,11 @@
-import { socketService } from '@/src/services/socketService';
+import { socketService } from "@/src/services/socketService";
 
 export enum ConnectionState {
-  DISCONNECTED = 'DISCONNECTED',
-  CONNECTING = 'CONNECTING',
-  CONNECTED = 'CONNECTED',
-  RECONNECTING = 'RECONNECTING',
-  FAILED = 'FAILED',
+  DISCONNECTED = "DISCONNECTED",
+  CONNECTING = "CONNECTING",
+  CONNECTED = "CONNECTED",
+  RECONNECTING = "RECONNECTING",
+  FAILED = "FAILED",
 }
 
 export interface ConnectionInfo {
@@ -46,24 +46,25 @@ class ConnectionManager {
   }
 
   private setupNetworkListeners(): void {
-    // Web network detection
-    if (typeof window !== 'undefined') {
-      window.addEventListener('online', this.handleNetworkOnline.bind(this));
-      window.addEventListener('offline', this.handleNetworkOffline.bind(this));
+    if (
+      typeof window !== "undefined" &&
+      typeof window.addEventListener === "function"
+    ) {
+      window.addEventListener("online", this.handleNetworkOnline.bind(this));
+      window.addEventListener("offline", this.handleNetworkOffline.bind(this));
     }
-
-    // React Native network detection would use @react-native-community/netinfo
-    // import NetInfo from '@react-native-community/netinfo';
-    // NetInfo.addEventListener(this.handleNetworkChange.bind(this));
   }
 
   private setupSocketListeners(): void {
-    socketService.on('connect', this.handleSocketConnect.bind(this));
-    socketService.on('disconnect', this.handleSocketDisconnect.bind(this));
-    socketService.on('connect_error', this.handleSocketError.bind(this));
-    socketService.on('reconnect', this.handleSocketReconnect.bind(this));
-    socketService.on('reconnect_error', this.handleSocketReconnectError.bind(this));
-    socketService.on('pong', this.handleHeartbeatResponse.bind(this));
+    socketService.on("connect", this.handleSocketConnect.bind(this));
+    socketService.on("disconnect", this.handleSocketDisconnect.bind(this));
+    socketService.on("connect_error", this.handleSocketError.bind(this));
+    socketService.on("reconnect", this.handleSocketReconnect.bind(this));
+    socketService.on(
+      "reconnect_error",
+      this.handleSocketReconnectError.bind(this)
+    );
+    socketService.on("pong", this.handleHeartbeatResponse.bind(this));
   }
 
   async connect(): Promise<void> {
@@ -73,11 +74,11 @@ class ConnectionManager {
 
     this.isManualDisconnect = false;
     this.setConnectionState(ConnectionState.CONNECTING);
-    
+
     try {
       socketService.connect();
     } catch (error) {
-      console.error('Connection error:', error);
+      console.error("Connection error:", error);
       this.setConnectionState(ConnectionState.FAILED);
       this.scheduleReconnect();
     }
@@ -87,13 +88,13 @@ class ConnectionManager {
     this.isManualDisconnect = true;
     this.clearReconnectTimer();
     this.clearHeartbeatTimer();
-    
+
     socketService.disconnect();
     this.setConnectionState(ConnectionState.DISCONNECTED);
   }
 
   private handleSocketConnect(): void {
-    console.log('Socket connected successfully');
+    console.log("Socket connected successfully");
     this.reconnectAttempts = 0;
     this.clearReconnectTimer();
     this.setConnectionState(ConnectionState.CONNECTED);
@@ -102,9 +103,9 @@ class ConnectionManager {
   }
 
   private handleSocketDisconnect(reason: string): void {
-    console.log('Socket disconnected:', reason);
+    console.log("Socket disconnected:", reason);
     this.clearHeartbeatTimer();
-    
+
     if (!this.isManualDisconnect) {
       this.setConnectionState(ConnectionState.RECONNECTING, reason);
       this.scheduleReconnect();
@@ -112,8 +113,8 @@ class ConnectionManager {
   }
 
   private handleSocketError(error: any): void {
-    console.error('Socket connection error:', error);
-    
+    console.error("Socket connection error:", error);
+
     if (this.connectionState === ConnectionState.CONNECTING) {
       this.setConnectionState(ConnectionState.FAILED, error.message);
       this.scheduleReconnect();
@@ -121,32 +122,38 @@ class ConnectionManager {
   }
 
   private handleSocketReconnect(attemptNumber: number): void {
-    console.log('Socket reconnected after', attemptNumber, 'attempts');
+    console.log("Socket reconnected after", attemptNumber, "attempts");
     this.handleSocketConnect();
   }
 
   private handleSocketReconnectError(error: any): void {
-    console.error('Socket reconnection error:', error);
+    console.error("Socket reconnection error:", error);
     this.reconnectAttempts++;
-    
+
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      this.setConnectionState(ConnectionState.FAILED, 'Max reconnection attempts reached');
+      this.setConnectionState(
+        ConnectionState.FAILED,
+        "Max reconnection attempts reached"
+      );
       return;
     }
-    
+
     this.scheduleReconnect();
   }
 
   private handleNetworkOnline(): void {
-    console.log('Network came online');
-    if (this.connectionState !== ConnectionState.CONNECTED && !this.isManualDisconnect) {
+    console.log("Network came online");
+    if (
+      this.connectionState !== ConnectionState.CONNECTED &&
+      !this.isManualDisconnect
+    ) {
       this.connect();
     }
   }
 
   private handleNetworkOffline(): void {
-    console.log('Network went offline');
-    this.setConnectionState(ConnectionState.DISCONNECTED, 'Network offline');
+    console.log("Network went offline");
+    this.setConnectionState(ConnectionState.DISCONNECTED, "Network offline");
   }
 
   private scheduleReconnect(): void {
@@ -154,11 +161,16 @@ class ConnectionManager {
       return;
     }
 
-    const timeoutIndex = Math.min(this.reconnectAttempts, this.reconnectTimeouts.length - 1);
+    const timeoutIndex = Math.min(
+      this.reconnectAttempts,
+      this.reconnectTimeouts.length - 1
+    );
     const delay = this.reconnectTimeouts[timeoutIndex];
-    
-    console.log(`Scheduling reconnect attempt ${this.reconnectAttempts + 1} in ${delay}ms`);
-    
+
+    console.log(
+      `Scheduling reconnect attempt ${this.reconnectAttempts + 1} in ${delay}ms`
+    );
+
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       if (!this.isManualDisconnect) {
@@ -176,22 +188,22 @@ class ConnectionManager {
 
   private startHeartbeat(): void {
     this.clearHeartbeatTimer();
-    
+
     this.heartbeatTimer = setInterval(() => {
       if (this.connectionState === ConnectionState.CONNECTED) {
         const startTime = Date.now();
         this.lastHeartbeat = new Date();
-        
-        socketService.emit('ping', {
+
+        socketService.emit("ping", {
           timestamp: startTime,
-          clientId: 'heartbeat',
+          clientId: "heartbeat",
         });
       }
     }, 30000); // Heartbeat every 30 seconds
   }
 
   private handleHeartbeatResponse(data: any): void {
-    if (data.clientId === 'heartbeat') {
+    if (data.clientId === "heartbeat") {
       const now = Date.now();
       this.latency = now - data.timestamp;
       this.notifyConnectionListeners();
@@ -224,7 +236,10 @@ class ConnectionManager {
   }
 
   private async processQueuedOperations(): Promise<void> {
-    if (this.connectionState !== ConnectionState.CONNECTED || this.operationQueue.length === 0) {
+    if (
+      this.connectionState !== ConnectionState.CONNECTED ||
+      this.operationQueue.length === 0
+    ) {
       return;
     }
 
@@ -234,16 +249,16 @@ class ConnectionManager {
       try {
         // Emit the operation
         socketService.emit(queuedOp.operation.type, queuedOp.operation.data);
-        console.log('Processed queued operation:', queuedOp.id);
+        console.log("Processed queued operation:", queuedOp.id);
       } catch (error) {
-        console.error('Error processing queued operation:', error);
-        
+        console.error("Error processing queued operation:", error);
+
         // Retry if we haven't exceeded max retries
         if (queuedOp.retryCount < queuedOp.maxRetries) {
           queuedOp.retryCount++;
           this.operationQueue.push(queuedOp);
         } else {
-          console.error('Max retries exceeded for operation:', queuedOp.id);
+          console.error("Max retries exceeded for operation:", queuedOp.id);
         }
       }
     }
@@ -251,7 +266,9 @@ class ConnectionManager {
   }
 
   removeQueuedOperation(operationId: string): void {
-    this.operationQueue = this.operationQueue.filter(op => op.id !== operationId);
+    this.operationQueue = this.operationQueue.filter(
+      (op) => op.id !== operationId
+    );
     this.notifyQueueListeners();
   }
 
@@ -264,22 +281,25 @@ class ConnectionManager {
   private setConnectionState(state: ConnectionState, reason?: string): void {
     const previousState = this.connectionState;
     this.connectionState = state;
-    
-    console.log(`Connection state changed: ${previousState} -> ${state}`, reason ? `(${reason})` : '');
-    
+
+    console.log(
+      `Connection state changed: ${previousState} -> ${state}`,
+      reason ? `(${reason})` : ""
+    );
+
     this.notifyConnectionListeners();
   }
 
- getConnectionInfo(): ConnectionInfo {
-  return {
-    state: this.connectionState,
-    lastConnected: this.lastHeartbeat ?? undefined,  // ← FIXED: null → undefined
-    disconnectReason: undefined,
-    reconnectAttempt: this.reconnectAttempts,
-    isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
-    latency: this.latency || undefined,
-  };
-}
+  getConnectionInfo(): ConnectionInfo {
+    return {
+      state: this.connectionState,
+      lastConnected: this.lastHeartbeat ?? undefined, // ← FIXED: null → undefined
+      disconnectReason: undefined,
+      reconnectAttempt: this.reconnectAttempts,
+      isOnline: typeof navigator !== "undefined" ? navigator.onLine : true,
+      latency: this.latency || undefined,
+    };
+  }
 
   isConnected(): boolean {
     return this.connectionState === ConnectionState.CONNECTED;
@@ -293,24 +313,26 @@ class ConnectionManager {
   onConnectionChange(callback: (info: ConnectionInfo) => void): () => void {
     this.connectionListeners.push(callback);
     return () => {
-      this.connectionListeners = this.connectionListeners.filter(cb => cb !== callback);
+      this.connectionListeners = this.connectionListeners.filter(
+        (cb) => cb !== callback
+      );
     };
   }
 
   onQueueChange(callback: (operations: QueuedOperation[]) => void): () => void {
     this.queueListeners.push(callback);
     return () => {
-      this.queueListeners = this.queueListeners.filter(cb => cb !== callback);
+      this.queueListeners = this.queueListeners.filter((cb) => cb !== callback);
     };
   }
 
   private notifyConnectionListeners(): void {
     const info = this.getConnectionInfo();
-    this.connectionListeners.forEach(callback => callback(info));
+    this.connectionListeners.forEach((callback) => callback(info));
   }
 
   private notifyQueueListeners(): void {
-    this.queueListeners.forEach(callback => callback(this.operationQueue));
+    this.queueListeners.forEach((callback) => callback(this.operationQueue));
   }
 }
 export const connectionManager = new ConnectionManager();
