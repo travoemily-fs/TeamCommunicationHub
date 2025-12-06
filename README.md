@@ -6,7 +6,6 @@ Here.
 
 Here.
 
-
 ## Technical Submission Checklist
 
 - [ ] App runs on web and iOS (tested locally) - Required

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { socketService } from "../services/socketService";
+import { connectionManager } from "@/src/services/connectionManager";
 
 export interface UseSocketReturn {
   isConnected: boolean;
@@ -21,23 +22,21 @@ export const useSocket = (): UseSocketReturn => {
     if (hasSetup.current) return;
     hasSetup.current = true;
 
-    socketService.connect();
+    connectionManager.connect();
+
+    const unsubscribe = connectionManager.onConnectionChange((info) => {
+      if (info.state === "CONNECTED") {
+        setIsConnected(true);
+        setConnectionError(null);
+      } else if (info.state === "FAILED") {
+        setIsConnected(false);
+        setConnectionError(info.disconnectReason ?? "Connection failed");
+      } else if (info.state === "DISCONNECTED") {
+        setIsConnected(false);
+      }
+    });
 
     // Set up event listeners
-    socketService.on("connect", () => {
-      setIsConnected(true);
-      setConnectionError(null);
-    });
-    socketService.on("disconnect", () => {
-      setIsConnected(false);
-    });
-    socketService.on("connect_error", (error: any) => {
-      setConnectionError(error.message);
-      setIsConnected(false);
-    });
-    socketService.on("connection_confirmed", (data: any) => {
-      console.log("Connection confirmed:", data);
-    });
     socketService.on("pong", (data: any) => {
       setLastPong(new Date(data.serverTimestamp));
     });
@@ -45,10 +44,7 @@ export const useSocket = (): UseSocketReturn => {
     // Cleanup on unmount
     return () => {
       // removed socketService.disconnect() to keep socket going across multiple screens & listeners to prevent duplicates
-      socketService.off("connect");
-      socketService.off("disconnect");
-      socketService.off("connect_error");
-      socketService.off("connection_confirmed");
+      unsubscribe();
       socketService.off("pong");
     };
   }, []);

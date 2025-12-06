@@ -1,8 +1,11 @@
-require("dotenv").config();
-const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
-const cors = require("cors");
+import dotenv from "dotenv";
+dotenv.config();
+
+import express from "express";
+import http from "http";
+import { Server } from "socket.io";
+import cors from "cors";
+
 const app = express();
 const server = http.createServer(app);
 
@@ -40,7 +43,7 @@ class CollaborativeRoom {
     this.roomId = roomId;
     this.sharedState = {};
     this.participants = new Map();
-    this.activeEditors = new Map(); // field -> userId
+    this.activeEditors = new Map();
     this.operationHistory = [];
     this.lastOperationId = 0;
   }
@@ -59,7 +62,6 @@ class CollaborativeRoom {
 
   removeParticipant(userId: string) {
     this.participants.delete(userId);
-    // Remove any active edits by this user
     for (const [field, editorId] of this.activeEditors.entries()) {
       if (editorId === userId) {
         this.activeEditors.delete(field);
@@ -75,13 +77,10 @@ class CollaborativeRoom {
       timestamp: new Date().toISOString(),
     };
 
-    // Apply operation to shared state
     this.updateSharedState(timestampedOp);
 
-    // Store in history for new clients
     this.operationHistory.push(timestampedOp);
 
-    // Keep only last 100 operations
     if (this.operationHistory.length > 100) {
       this.operationHistory = this.operationHistory.slice(-100);
     }
@@ -196,7 +195,7 @@ app.get("/api/chat/rooms/:roomId/messages", (req: any, res: any) => {
   const offset = parseInt(req.query.offset) || 0;
 
   const roomData = chatRooms.get(roomId) || { messages: [] };
-  const messages = roomData.messages.slice(offset, offset + limit).reverse(); // Most recent first
+  const messages = roomData.messages.slice(offset, offset + limit).reverse();
 
   res.json({ messages, hasMore: offset + limit < roomData.messages.length });
 });

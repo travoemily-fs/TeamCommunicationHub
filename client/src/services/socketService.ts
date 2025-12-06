@@ -21,16 +21,23 @@ class SocketServiceImpl implements SocketService {
 
 // revamped getServerUrl() function with updated function that'll support my app.json setup
 private getServerUrl(): string {
-    if (__DEV__) {
-        if (Platform.OS === 'web') {
-            return 'http://localhost:3001';
-        } else {
-            // takes my ip from app.json
-            return Constants.expoConfig?.extra?.socketUrl || 'http://10.0.0.52:3001';
-        } 
-    } else {
-        return 'http://your-production-server.com';
+  const envUrl = process.env.EXPO_PUBLIC_SOCKET_URL;
+
+  if (envUrl) {
+    return envUrl;
+  }
+
+  if (__DEV__) {
+    // localhost fallback for web
+    if (Platform.OS === "web") {
+      return "http://localhost:3001";
     }
+
+    // fallback for mobile 
+    return Constants.expoConfig?.extra?.socketUrl!;
+  }
+
+  return "https://your-production-server.com";
 }
 
   connect(): void {
