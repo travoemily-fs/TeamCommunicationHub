@@ -9,17 +9,15 @@ export default function HomeScreen() {
         Team Communication Hub
       </Text>
 
-      <Text className="text-lg text-gray-600 text-center mb-8">
-        Real-time connection is active in the status bar above
+      <Text className="text-md text-gray-600 text-center mb-8">
+        Connect for online features or proceed with limited offline features.
       </Text>
 
-      <Text className="text-sm text-gray-500 mb-8 text-center">
-        Ready for channels, messages, and team presence
-      </Text>
 
-      <View className="w-full space-y-4">
+
+      <View className="w-sm space-y-4">
         <Link href="/chat" asChild>
-          <TouchableOpacity className="w-full bg-blue-500 rounded-lg py-3 items-center">
+          <TouchableOpacity className="w-full bg-blue-500 rounded-lg p-5 items-center">
             <Text className="text-white font-semibold text-base">
               Open Chat
             </Text>
@@ -27,7 +25,7 @@ export default function HomeScreen() {
         </Link>
 
         <Link href="/collaborative" asChild>
-          <TouchableOpacity className="w-full bg-indigo-500 rounded-lg py-3 items-center">
+          <TouchableOpacity className="w-sm bg-indigo-500 rounded-lg p-5 items-center">
             <Text className="text-white font-semibold text-base">
               Collaborative Tasks
             </Text>

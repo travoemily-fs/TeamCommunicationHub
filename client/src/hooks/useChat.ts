@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { chatService, TypingUser } from "@/src/services/chatService";
 import { ChatMessage, ChatRoom } from "@/src/services/chatDatabase";
 
+let lastJoinedRoom: string | null = null;
+
 export interface UseChatReturn {
   messages: ChatMessage[];
   typingUsers: TypingUser[];
@@ -86,6 +88,13 @@ export const useChat = (userId: string, userName: string): UseChatReturn => {
   };
 
   const joinRoom = useCallback(async (roomId: string, roomName: string) => {
+ 
+    if(lastJoinedRoom === roomId) {
+      return;
+    }
+
+    lastJoinedRoom = roomId;
+
     try {
       setIsLoading(true);
       await chatService.joinRoom(roomId, roomName);

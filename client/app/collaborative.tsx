@@ -13,7 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useCollaborative } from "@/src/hooks/useCollaborative";
 import { PresenceIndicators } from "@/src/components/PresenceIndicators";
 import { CollaborativeTaskItem } from "@/src/components/CollaborativeTaskItem";
-import { ConnectionStatus } from "@/src/components/ConnectionStatus";
+import { useRouter } from "expo-router";
 
 // You would get these from user authentication
 const CURRENT_USER_ID = "user_123";
@@ -22,6 +22,8 @@ const ROOM_ID = "shared_tasks";
 export default function CollaborativeTasksScreen() {
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [isAddingTask, setIsAddingTask] = useState(false);
+
+  const router = useRouter();
 
   const {
     sharedState,
@@ -108,21 +110,20 @@ export default function CollaborativeTasksScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50 dark:bg-gray-900">
+      <TouchableOpacity onPress={() => router.push("/")} className="px-5 py-4 pt-5">
+        <Text className="text-blue-500 text-base">Go Back</Text>
+      </TouchableOpacity>
+
       <View className="flex-1 px-5 pt-8 md:px-8 lg:px-12 max-w-4xl mx-auto">
         <Text className="text-3xl md:text-4xl font-bold text-center mb-8 text-gray-800 dark:text-white">
           Collaborative Tasks
         </Text>
 
-        {/* Connection Status */}
-        <ConnectionStatus />
-
-        {/* Presence Indicators */}
         <PresenceIndicators
           participants={participants}
           currentUserId={CURRENT_USER_ID}
         />
 
-        {/* Add Task Input */}
         <View className="flex-row mb-5 md:mb-6">
           <TextInput
             className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg p-3 md:p-4 bg-white dark:bg-gray-800 text-base dark:text-white mr-2 md:mr-3"
@@ -133,6 +134,7 @@ export default function CollaborativeTasksScreen() {
             onSubmitEditing={handleAddTask}
             editable={!isAddingTask}
           />
+
           <TouchableOpacity
             className={`rounded-lg px-5 py-3 md:px-6 md:py-4 justify-center ${
               isAddingTask ? "bg-gray-400" : "bg-blue-500 active:bg-blue-600"
@@ -147,7 +149,6 @@ export default function CollaborativeTasksScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Task List */}
         <FlatList
           data={tasks}
           renderItem={renderTask}
@@ -163,7 +164,6 @@ export default function CollaborativeTasksScreen() {
           }
         />
 
-        {/* Summary */}
         <View className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
           <Text className="text-center text-blue-700 dark:text-blue-300 text-sm font-medium">
             {tasks.length} total tasks •{" "}

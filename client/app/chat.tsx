@@ -12,16 +12,25 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useChat } from "@/src/hooks/useChat";
 import { ChatMessage } from "@/src/services/chatDatabase";
-import { ConnectionStatus } from "@/src/components/ConnectionStatus";
+import { useRouter } from "expo-router";
 
 // You would get these from user authentication
 const CURRENT_USER_ID = "user_123";
 const CURRENT_USER_NAME = "John Doe";
 
+// hard coded rooms for pre-existing channels
+const ROOMS = [
+  { id: "general", label: "General Chat" },
+  { id: "project", label: "Group Project Chat" },
+  { id: "random", label: "Misc Chat" },
+];
+
 export default function ChatScreen() {
   const [inputText, setInputText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const flatListRef = useRef<FlatList>(null);
+
+  const router = useRouter();
 
   const {
     messages,
@@ -35,8 +44,10 @@ export default function ChatScreen() {
   } = useChat(CURRENT_USER_ID, CURRENT_USER_NAME);
 
   useEffect(() => {
-    joinRoom("general", "General Chat");
-  }, [joinRoom]);
+    if (currentRoom !== "general") {
+      joinRoom("general", "General Chat");
+    }
+  }, [currentRoom, joinRoom]);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -134,11 +145,41 @@ export default function ChatScreen() {
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         className="flex-1">
-        {/* CONNECTION STATUS BAR */}
-        <ConnectionStatus />
+        {/* back btn */}
 
-        {/* Header */}
-        <Text className="text-lg font-semibold text-gray-800 dark:text-white">
+        <TouchableOpacity
+          onPress={() => router.push("/")}
+          className="px-4 py-2 pt-5">
+          <Text className="text-blue-500 text-base">Go Back</Text>
+        </TouchableOpacity>
+
+        {/* room selection */}
+        <View className="flex-row px-4 pt-3 space-x-2">
+          {ROOMS.map((room) => {
+            const isActive = currentRoom === room.id;
+            return (
+              <TouchableOpacity
+                key={room.id}
+                onPress={() => joinRoom(room.id, room.label)}
+                className={`px-3 py-2 rounded-full border ${
+                  isActive
+                    ? "bg-blue-500 border-blue-500"
+                    : "bg-transparent border-gray-300 dark:border-gray-600"
+                }`}>
+                <Text
+                  className={
+                    isActive
+                      ? "text-white text-sm font-semibold"
+                      : "text-gray-700 dark:text-gray-200 text-sm"
+                  }>
+                  {room.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <Text className="text-lg font-semibold align-center text-gray-800 dark:text-white pt-5 pl-5">
           {currentRoom
             ? currentRoom === "general"
               ? "General Chat"
@@ -147,7 +188,6 @@ export default function ChatScreen() {
             : "Loading..."}
         </Text>
 
-        {/* Messages */}
         <FlatList
           ref={flatListRef}
           data={messages}
@@ -161,22 +201,27 @@ export default function ChatScreen() {
           showsVerticalScrollIndicator={false}
         />
 
-        {/* Input */}
         <View className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 py-3">
           <View className="flex-row items-end">
             <TextInput
-              className="flex-1 border border-gray-300 dark:border-gray-600 rounded-full px-4 py-2 mr-2 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-white"
+              className="flex-1 border border-gray-300 dark:border-gray-600 rounded-full px-4 py-2 mr-2 pl-6 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-white pt-6 pb-6"
               placeholder="Type a message..."
               placeholderTextColor="#9CA3AF"
               value={inputText}
               onChangeText={handleTextChange}
-              onSubmitEditing={handleSendMessage}
               onBlur={handleStopTyping}
-              multiline
               maxLength={1000}
-            />
+              multiline={false}
+              returnKeyType="send"
+              onKeyPress={(e) => {
+                if (e.nativeEvent.key === "Enter") {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
+            />{" "}
             <TouchableOpacity
-              className={`rounded-full p-3 ${
+              className={`rounded-full p-6 pl-8 pr-8 ${
                 inputText.trim()
                   ? "bg-blue-500 active:bg-blue-600"
                   : "bg-gray-300 dark:bg-gray-600"

@@ -269,7 +269,7 @@ class ChatDatabaseService {
       throw error;
     }
   }
-
+  
   async markMessagesAsRead(
     roomId: string,
     messageIds: string[]

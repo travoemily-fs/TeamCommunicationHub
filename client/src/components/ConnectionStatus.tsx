@@ -6,6 +6,7 @@ import {
   ConnectionInfo,
   QueuedOperation,
 } from "@/src/services/connectionManager";
+import { OfflineIndicator } from "./OfflineIndicator";
 
 export const ConnectionStatus: React.FC = () => {
   const [connectionInfo, setConnectionInfo] = useState<ConnectionInfo>(
@@ -35,6 +36,17 @@ export const ConnectionStatus: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    // adding logic check to avoid ui flashing when disconnected
+    const state = connectionInfo.state;
+
+    if (
+      state === ConnectionState.DISCONNECTED ||
+      state === ConnectionState.FAILED
+    ) {
+      fadeAnim.setValue(1);
+      return;
+    }
+
     Animated.sequence([
       Animated.timing(fadeAnim, {
         toValue: 0.3,
@@ -93,7 +105,7 @@ export const ConnectionStatus: React.FC = () => {
   return (
     <Animated.View style={{ opacity: fadeAnim }}>
       <TouchableOpacity
-        className={`rounded-lg p-3 mb-4 border ${getStatusColor()}`}
+        className={`p-5 ${getStatusColor()}`}
         onPress={() => setIsExpanded(!isExpanded)}
         activeOpacity={0.7}>
         <View className="flex-row items-center justify-between">
@@ -103,10 +115,17 @@ export const ConnectionStatus: React.FC = () => {
             </Text>
           </View>
 
+          {(connectionInfo.state === ConnectionState.DISCONNECTED ||
+            connectionInfo.state === ConnectionState.FAILED) && (
+            <Text className="flex-row items-center pt-5">
+              <OfflineIndicator />
+            </Text>
+          )}
+
           {(connectionInfo.state === ConnectionState.FAILED ||
             connectionInfo.state === ConnectionState.DISCONNECTED) && (
             <TouchableOpacity
-              className="bg-blue-500 rounded px-3 py-3 ml-2"
+              className="bg-blue-500 rounded px-5 rounded-lg py-3 ml-2"
               onPress={(e) => {
                 e.stopPropagation?.();
                 handleRetry();
@@ -124,7 +143,7 @@ export const ConnectionStatus: React.FC = () => {
               <Text className="text-sm text-gray-600 dark:text-gray-400">
                 Network:
               </Text>
-              <Text className="text-sm text-gray-800 dark:text-white">
+              <Text className="text-sm text-gray-800 dark:text-gray-400">
                 {connectionInfo.isOnline ? "Online" : "Offline"}
               </Text>
             </View>
@@ -134,7 +153,7 @@ export const ConnectionStatus: React.FC = () => {
                 <Text className="text-sm text-gray-600 dark:text-gray-400">
                   Latency:
                 </Text>
-                <Text className="text-sm text-gray-800 dark:text-white">
+                <Text className="text-sm text-gray-800 dark:text-gray-400">
                   {formatLatency(connectionInfo.latency)}
                 </Text>
               </View>
@@ -145,7 +164,7 @@ export const ConnectionStatus: React.FC = () => {
                 <Text className="text-sm text-gray-600 dark:text-gray-400">
                   Last Connected:
                 </Text>
-                <Text className="text-sm text-gray-800 dark:text-white">
+                <Text className="text-sm text-gray-800 dark:text-gray-400">
                   {connectionInfo.lastConnected.toLocaleTimeString()}
                 </Text>
               </View>

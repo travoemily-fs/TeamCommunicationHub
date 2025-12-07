@@ -36,6 +36,8 @@ class ConnectionManager {
   private isManualDisconnect: boolean = false;
   private lastHeartbeat: Date | null = null;
   private latency: number = 0;
+  // prevent it trying to reconnect based off of the browser
+  private lastConnectAttempt: number = 0;
 
   // Event listeners
   private connectionListeners: ((info: ConnectionInfo) => void)[] = [];
@@ -67,7 +69,16 @@ class ConnectionManager {
     socketService.on("pong", this.handleHeartbeatResponse.bind(this));
   }
 
+  // altered block to prevent the rapid-fire browser reconnect attempts
   async connect(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastConnectAttempt < 5000) {
+      console.log("Skipping connect() — throttled to prevent spam");
+      return;
+    }
+
+    this.lastConnectAttempt = now;
+
     if (this.connectionState === ConnectionState.CONNECTED) {
       return;
     }
