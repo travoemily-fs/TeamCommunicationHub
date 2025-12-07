@@ -1,4 +1,3 @@
-
 import { socketService } from '@/src/services/socketService';
 import { chatDatabaseService, ChatMessage, ChatRoom } from '@/src/services/chatDatabase';
 
@@ -21,11 +20,18 @@ class ChatService {
   private currentUserName: string | null = null;
   private currentRoomId: string | null = null;
   private typingTimeout: NodeJS.Timeout | null = null;
+  private listenersInitialized = false;
+
+
   // Event listeners
   private messageListeners: ((message: ChatMessage) => void)[] = [];
   private typingListeners: ((typingUser: TypingUser) => void)[] = [];
   private presenceListeners: ((users: ChatUser[]) => void)[] = [];
   private deliveryListeners: ((tempId: string, messageId: string) => void)[] = [];
+
+  // reaction listeners
+  private reactionListeners: ((message: ChatMessage) => void)[] = [];
+
   async initialize(userId: string, userName: string): Promise<void> {
     this.currentUserId = userId;
     this.currentUserName = userName;
@@ -41,31 +47,44 @@ class ChatService {
     });
   }
 
-  private setupSocketListeners(): void {
-    // Handle new messages
-    socketService.on('new_message', (message: ChatMessage) => {
-      this.handleNewMessage(message);
-    });
-    // Handle typing indicators
-    socketService.on('user_typing', (data: TypingUser) => {
-      this.notifyTypingListeners(data);
-    });
-    // Handle message delivery confirmation
-    socketService.on('message_delivered', (data: { tempId: string; messageId: string; timestamp: string }) => {
+private setupSocketListeners(): void {
+  if (this.listenersInitialized) return;
+  this.listenersInitialized = true;
+
+  // Handle new messages
+  socketService.on("new_message", (message: ChatMessage) => {
+    this.handleNewMessage(message);
+  });
+
+  // Handle typing indicators
+  socketService.on("user_typing", (data: TypingUser) => {
+    this.notifyTypingListeners(data);
+  });
+
+  // Handle message delivery confirmation
+  socketService.on(
+    "message_delivered",
+    (data: { tempId: string; messageId: string; timestamp: string }) => {
       this.handleMessageDelivered(data.tempId, data.messageId);
-    });
-    // Handle room joined
-    socketService.on('room_joined', async (data: { roomId: string; messages: ChatMessage[]; participants: ChatUser[] }) => {
+    }
+  );
+
+  // Handle room joined
+  socketService.on(
+    "room_joined",
+    async (data: { roomId: string; messages: ChatMessage[]; participants: ChatUser[] }) => {
       await this.handleRoomJoined(data);
-    });
-    // Handle user presence
-    socketService.on('user_joined_room', (data: ChatUser) => {
-      // Handle user joining room
-    });
-    socketService.on('user_left_room', (data: ChatUser) => {
-      // Handle user leaving room
-    });
-  }
+    }
+  );
+
+  // Handle reactions
+  socketService.on("reaction", async (updatedMessage: ChatMessage) => {
+    await chatDatabaseService.saveMessage(updatedMessage);
+    this.notifyReactionListeners(updatedMessage);
+  });
+}
+
+
   async joinRoom(roomId: string, roomName: string): Promise<void> {
     this.currentRoomId = roomId;
     
@@ -103,12 +122,16 @@ class ChatService {
       delivered: false,
       read: true, // Own messages are considered read
       type: 'text',
+      // setting up reactions 
+      reactions: {},
     };
+
     // Save optimistically to local database
     await chatDatabaseService.saveMessage(message);
     
     // Notify UI immediately
     this.notifyMessageListeners(message);
+
     // Send to server
     socketService.emit('send_message', {
       roomId: this.currentRoomId,
@@ -121,6 +144,17 @@ class ChatService {
       },
     });
   }
+
+  async toggleReaction(messageId: string, emoji: string): Promise<void> {
+  if (!this.currentRoomId || !this.currentUserId) return;
+
+  socketService.emit('toggle_reaction', {
+    roomId: this.currentRoomId,
+    messageId,
+    userId: this.currentUserId,
+    emoji,
+  });
+}
   
   startTyping(): void {
     if (!this.currentRoomId || !this.currentUserId || !this.currentUserName) return;
@@ -160,13 +194,14 @@ class ChatService {
     return await chatDatabaseService.getAllRooms();
   }
   
-  private async handleNewMessage(message: ChatMessage): Promise<void> {
-    // Save to local database
-    await chatDatabaseService.saveMessage(message);
-    
-    // Notify UI
-    this.notifyMessageListeners(message);
-  }
+private async handleNewMessage(message: ChatMessage): Promise<void> {
+  // only processes the messages that belong to the room that is currently opened
+  if (message.roomId !== this.currentRoomId) return;
+
+  await chatDatabaseService.saveMessage(message);
+  this.notifyMessageListeners(message);
+}
+
   
   private async handleMessageDelivered(tempId: string, messageId: string): Promise<void> {
     // Update local database
@@ -205,6 +240,13 @@ class ChatService {
     };
   }
 
+  onReaction(callback: (message: ChatMessage) => void): () => void {
+    this.reactionListeners.push(callback);
+    return () => {
+      this.reactionListeners = this.reactionListeners.filter(cb => cb !== callback);
+    };
+  }
+
   private notifyMessageListeners(message: ChatMessage): void {
     this.messageListeners.forEach(callback => callback(message));
   }
@@ -215,6 +257,10 @@ class ChatService {
 
   private notifyDeliveryListeners(tempId: string, messageId: string): void {
     this.deliveryListeners.forEach(callback => callback(tempId, messageId));
+  }
+
+  private notifyReactionListeners(message: ChatMessage): void {
+    this.reactionListeners.forEach(callback => callback(message));
   }
 }
 

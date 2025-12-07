@@ -44,18 +44,18 @@ export default function ChatScreen() {
   } = useChat(CURRENT_USER_ID, CURRENT_USER_NAME);
 
   useEffect(() => {
-    if (currentRoom !== "general") {
-      joinRoom("general", "General Chat");
-    }
-  }, [currentRoom, joinRoom]);
-
-  useEffect(() => {
     if (messages.length > 0) {
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
       }, 100);
     }
   }, [messages]);
+
+  useEffect(() => {
+    if (!currentRoom) {
+      joinRoom("general", "General Chat");
+    }
+  }, [currentRoom, joinRoom]);
 
   const handleSendMessage = async () => {
     if (!inputText.trim()) return;

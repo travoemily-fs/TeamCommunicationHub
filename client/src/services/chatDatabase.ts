@@ -12,6 +12,9 @@ export interface ChatMessage {
   delivered: boolean;
   read: boolean;
   type: "text" | "system" | "typing";
+  reactions?: {
+    [emoji: string]: string[];
+  };
 }
 export interface ChatRoom {
   id: string;
@@ -27,14 +30,21 @@ class ChatDatabaseService {
   private db: SQLite.SQLiteDatabase | null = null;
 
   private webRooms: ChatRoom[] = [];
-  private webMessages: ChatMessage[] = [];
+  private webMessages: { [roomId: string]: ChatMessage[] } = {};
 
   async initializeDatabase(): Promise<void> {
     if (Platform.OS === "web") {
-      console.log("SQLite not used on web.");
-      this.db = {} as any;
+      console.log("Using localStorage for web persistence.");
+
+      const storedRooms = localStorage.getItem("chat_rooms");
+      const storedMessages = localStorage.getItem("chat_messages");
+
+      this.webRooms = storedRooms ? JSON.parse(storedRooms) : [];
+      this.webMessages = storedMessages ? JSON.parse(storedMessages) : {};
+
       return;
     }
+
     try {
       this.db = await SQLite.openDatabaseAsync("chat.db");
 
@@ -83,12 +93,13 @@ class ChatDatabaseService {
 
   async createOrUpdateRoom(room: ChatRoom): Promise<void> {
     if (Platform.OS === "web") {
-      const existing = this.webRooms.find(r => r.id === room.id);
+      const existing = this.webRooms.find((r) => r.id === room.id);
       if (existing) {
         Object.assign(existing, room);
       } else {
         this.webRooms.push({ ...room });
       }
+      localStorage.setItem("chat_rooms", JSON.stringify(this.webRooms));
       return;
     }
 
@@ -150,12 +161,20 @@ class ChatDatabaseService {
 
   async saveMessage(message: ChatMessage): Promise<void> {
     if (Platform.OS === "web") {
-      const idx = this.webMessages.findIndex(m => m.id === message.id);
-      if (idx >= 0) {
-        this.webMessages[idx] = message;
-      } else {
-        this.webMessages.push(message);
+      if (!this.webMessages[message.roomId]) {
+        this.webMessages[message.roomId] = [];
       }
+
+      const roomMessages = this.webMessages[message.roomId];
+      const idx = roomMessages.findIndex((m) => m.id === message.id);
+
+      if (idx >= 0) {
+        roomMessages[idx] = message;
+      } else {
+        roomMessages.push({ ...message });
+      }
+      localStorage.setItem("chat_messages", JSON.stringify(this.webMessages));
+
       return;
     }
 
@@ -200,8 +219,9 @@ class ChatDatabaseService {
     offset: number = 0
   ): Promise<ChatMessage[]> {
     if (Platform.OS === "web") {
-      return this.webMessages
-        .filter(m => m.roomId === roomId)
+      const msgs = this.webMessages[roomId] || [];
+      return msgs
+        .slice()
         .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
     }
 
@@ -244,12 +264,18 @@ class ChatDatabaseService {
     delivered: boolean = true
   ): Promise<void> {
     if (Platform.OS === "web") {
-      const msg = this.webMessages.find(m => m.tempId === tempId);
-      if (msg) {
-        msg.id = messageId;
-        msg.delivered = delivered;
-        msg.tempId = undefined;
+      for (const roomId in this.webMessages) {
+        const roomMessages = this.webMessages[roomId];
+        const msg = roomMessages.find((m) => m.tempId === tempId);
+        if (msg) {
+          msg.id = messageId;
+          msg.delivered = delivered;
+          msg.tempId = undefined;
+          break;
+        }
       }
+      localStorage.setItem("chat_messages", JSON.stringify(this.webMessages));
+
       return;
     }
 
@@ -269,17 +295,20 @@ class ChatDatabaseService {
       throw error;
     }
   }
-  
+
   async markMessagesAsRead(
     roomId: string,
     messageIds: string[]
   ): Promise<void> {
     if (Platform.OS === "web") {
-      this.webMessages.forEach(m => {
-        if (m.roomId === roomId && messageIds.includes(m.id)) {
+      const roomMessages = this.webMessages[roomId] || [];
+      roomMessages.forEach((m) => {
+        if (messageIds.includes(m.id)) {
           m.read = true;
         }
       });
+      localStorage.setItem("chat_messages", JSON.stringify(this.webMessages));
+
       return;
     }
 
@@ -309,7 +338,7 @@ class ChatDatabaseService {
     timestamp: string
   ): Promise<void> {
     if (Platform.OS === "web") {
-      const room = this.webRooms.find(r => r.id === roomId);
+      const room = this.webRooms.find((r) => r.id === roomId);
       if (room) {
         room.lastMessage = message;
         room.lastMessageTime = timestamp;

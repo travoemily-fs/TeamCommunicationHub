@@ -82,15 +82,15 @@ export const ConnectionStatus: React.FC = () => {
   const getStatusIcon = () => {
     switch (connectionInfo.state) {
       case ConnectionState.CONNECTED:
-        return "Live";
+        return "🛜  Live";
       case ConnectionState.CONNECTING:
       case ConnectionState.RECONNECTING:
-        return "Connecting";
+        return "📶  Connecting";
       case ConnectionState.DISCONNECTED:
       case ConnectionState.FAILED:
-        return "Offline";
+        return "📵  Offline";
       default:
-        return "Unknown";
+        return "⚠️  Unknown";
     }
   };
 
@@ -113,7 +113,7 @@ export const ConnectionStatus: React.FC = () => {
         activeOpacity={0.7}>
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center">
-            <Text className="text-gray-800 dark:text-gray-400 font-medium">
+            <Text className="text-gray-800 dark:text-gray-400 font-medium mb-3 mt-4">
               {getStatusIcon()}
             </Text>
           </View>
@@ -141,13 +141,13 @@ export const ConnectionStatus: React.FC = () => {
         </View>
 
         {isExpanded && (
-          <View className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600 space-y-2">
-            <View className="flex-row justify-between">
-              <Text className="text-sm text-gray-600 dark:text-gray-400">
-                Network:
+          <View className="t-5 border-t border-gray-200 dark:border-gray-300 space-y-1">
+            <View className="flex-row justify-around">
+              <Text className="text-sm text-gray-800 dark:text-gray-400 pt-3">
+                Network: 
               </Text>
-              <Text className="text-sm text-gray-800 dark:text-gray-400">
-                {connectionInfo.isOnline ? "Online" : "Offline"}
+              <Text className="text-sm text-gray-800 dark:text-gray-400 pt-3">
+                {connectionInfo.isOnline ? " Online" : " Offline"}
               </Text>
             </View>
 

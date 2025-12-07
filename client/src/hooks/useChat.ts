@@ -2,8 +2,6 @@ import { useState, useEffect, useCallback } from "react";
 import { chatService, TypingUser } from "@/src/services/chatService";
 import { ChatMessage, ChatRoom } from "@/src/services/chatDatabase";
 
-let lastJoinedRoom: string | null = null;
-
 export interface UseChatReturn {
   messages: ChatMessage[];
   typingUsers: TypingUser[];
@@ -35,19 +33,15 @@ export const useChat = (userId: string, userName: string): UseChatReturn => {
       setIsLoading(true);
       await chatService.initialize(userId, userName);
 
-      // Load existing rooms
       const existingRooms = await chatService.getAllRooms();
       setRooms(existingRooms);
 
-      // Set up event listeners
       const unsubscribeMessage = chatService.onMessage((message) => {
         setMessages((prev) => {
-          // Avoid duplicates
           const exists = prev.some(
             (m) => m.id === message.id || m.tempId === message.tempId
           );
           if (exists) {
-            // Update existing message (e.g., delivery status)
             return prev.map((m) =>
               m.id === message.id || m.tempId === message.tempId ? message : m
             );
@@ -87,32 +81,29 @@ export const useChat = (userId: string, userName: string): UseChatReturn => {
     }
   };
 
-  const joinRoom = useCallback(async (roomId: string, roomName: string) => {
- 
-    if(lastJoinedRoom === roomId) {
-      return;
-    }
+  const joinRoom = useCallback(
+    async (roomId: string, roomName: string) => {
+      if (currentRoom === roomId) {
+        return;
+      }
 
-    lastJoinedRoom = roomId;
+      try {
+        setIsLoading(true);
+        await chatService.joinRoom(roomId, roomName);
 
-    try {
-      setIsLoading(true);
-      await chatService.joinRoom(roomId, roomName);
-
-      // Load messages for this room
-      const roomMessages = await chatService.getMessagesForRoom(roomId);
-      setMessages(roomMessages);
-      setCurrentRoom(roomId);
-      setMessageOffset(roomMessages.length);
-
-      // Clear typing indicators when switching rooms
-      setTypingUsers([]);
-    } catch (error) {
-      console.error("Error joining room:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+        const roomMessages = await chatService.getMessagesForRoom(roomId);
+        setMessages(roomMessages);
+        setCurrentRoom(roomId);
+        setMessageOffset(roomMessages.length);
+        setTypingUsers([]);
+      } catch (error) {
+        console.error("Error joining room:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [currentRoom]
+  );
 
   const sendMessage = useCallback(async (text: string) => {
     try {
@@ -130,27 +121,30 @@ export const useChat = (userId: string, userName: string): UseChatReturn => {
     chatService.stopTyping();
   }, []);
 
-  const loadMoreMessages = useCallback(async () => {
-    if (!currentRoom || isLoading) return;
+  const loadMoreMessages = useCallback(
+    async () => {
+      if (!currentRoom || isLoading) return;
 
-    try {
-      setIsLoading(true);
-      const olderMessages = await chatService.getMessagesForRoom(
-        currentRoom,
-        20,
-        messageOffset
-      );
+      try {
+        setIsLoading(true);
+        const olderMessages = await chatService.getMessagesForRoom(
+          currentRoom,
+          20,
+          messageOffset
+        );
 
-      if (olderMessages.length > 0) {
-        setMessages((prev) => [...olderMessages, ...prev]);
-        setMessageOffset((prev) => prev + olderMessages.length);
+        if (olderMessages.length > 0) {
+          setMessages((prev) => [...olderMessages, ...prev]);
+          setMessageOffset((prev) => prev + olderMessages.length);
+        }
+      } catch (error) {
+        console.error("Error loading more messages:", error);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error("Error loading more messages:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [currentRoom, messageOffset, isLoading]);
+    },
+    [currentRoom, messageOffset, isLoading]
+  );
 
   return {
     messages,

@@ -139,3 +139,4 @@ class SocketServiceImpl implements SocketService {
 }
 
 export const socketService = new SocketServiceImpl();
+socketService.connect();

@@ -4,10 +4,10 @@
 
 - [ ] Typing indicators work correctly
 
-- [x] User presence shows online users
+- [ ] User presence shows online users
 
 - [ ] Messages persist after app restart
 
 - [x] Connection status indicator works
 
-- [x] Offline messages queue and sync when reconnected
+- [] Offline messages queue and sync when reconnected
