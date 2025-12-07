@@ -39,6 +39,10 @@ export const ConnectionStatus: React.FC = () => {
     // adding logic check to avoid ui flashing when disconnected
     const state = connectionInfo.state;
 
+    if (state === ConnectionState.CONNECTING && !hasConnectedOnce) {
+      return;
+    }
+
     if (
       state === ConnectionState.DISCONNECTED ||
       state === ConnectionState.FAILED
@@ -46,7 +50,6 @@ export const ConnectionStatus: React.FC = () => {
       fadeAnim.setValue(1);
       return;
     }
-
     Animated.sequence([
       Animated.timing(fadeAnim, {
         toValue: 0.3,
@@ -59,7 +62,7 @@ export const ConnectionStatus: React.FC = () => {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [connectionInfo.state, fadeAnim]);
+  }, [connectionInfo.state, fadeAnim, hasConnectedOnce]);
 
   const getStatusColor = () => {
     switch (connectionInfo.state) {
