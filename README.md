@@ -68,7 +68,7 @@ These sources were used to help create this functionality:
 
 - [x] User presence and typing indicators function across channels
 
-- [x] One enhanced feature completed and functional
+- [] One enhanced feature completed and functional - HALFWAY ATTEMPTED :/ 
 
 - [] Offline message queuing works and syncs on reconnection
 
