@@ -1,12 +1,12 @@
 # 2.6 Exercise: Live Chat App with Cross-Platform Sync
 
-- [ ] Messages appear instantly on all connected devices
+- [] Messages appear instantly on all connected devices
 
-- [ ] Typing indicators work correctly
+- [x] Typing indicators work correctly
 
-- [ ] User presence shows online users
+- [x] User presence shows online users
 
-- [ ] Messages persist after app restart
+- [x] Messages persist after app restart
 
 - [x] Connection status indicator works
 

@@ -21,89 +21,111 @@ export const useChat = (userId: string, userName: string): UseChatReturn => {
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
   const [currentRoom, setCurrentRoom] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-
   const [messageOffset, setMessageOffset] = useState(0);
-  useEffect(() => {
-    initializeChat();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, userName]);
 
-  const initializeChat = async () => {
-    try {
+  const sortMessages = (arr: ChatMessage[]) => {
+    return [...arr].sort(
+      (a, b) =>
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+  };
+
+  // 🔥 FINAL DEDUPE FUNCTION — no more duplicates, no more bad merges
+  const preventDuplicateMessages = useCallback(
+    (incoming: ChatMessage, prev: ChatMessage[]) => {
+      const cleaned = prev.filter(
+        (m) =>
+          m.id !== incoming.id &&
+          m.tempId !== incoming.tempId &&
+          m.id !== incoming.tempId &&
+          m.tempId !== incoming.id
+      );
+
+      cleaned.push(incoming);
+      return sortMessages(cleaned);
+    },
+    []
+  );
+
+  useEffect(() => {
+    let unsubscribeMessage: (() => void) | null = null;
+    let unsubscribeTyping: (() => void) | null = null;
+    let unsubscribeDelivery: (() => void) | null = null;
+
+    const init = async () => {
       setIsLoading(true);
       await chatService.initialize(userId, userName);
 
       const existingRooms = await chatService.getAllRooms();
       setRooms(existingRooms);
 
-      const unsubscribeMessage = chatService.onMessage((message) => {
-        setMessages((prev) => {
-          const exists = prev.some(
-            (m) => m.id === message.id || m.tempId === message.tempId
-          );
-          if (exists) {
-            return prev.map((m) =>
-              m.id === message.id || m.tempId === message.tempId ? message : m
-            );
-          }
-          return [...prev, message];
-        });
+      // ❗ FIXED: incoming message handling
+      unsubscribeMessage = chatService.onMessage((message) => {
+        setMessages((prev) => preventDuplicateMessages(message, prev));
       });
 
-      const unsubscribeTyping = chatService.onTyping((typingUser) => {
+      unsubscribeTyping = chatService.onTyping((typingUser) => {
         setTypingUsers((prev) => {
           const filtered = prev.filter((u) => u.userId !== typingUser.userId);
           return typingUser.isTyping ? [...filtered, typingUser] : filtered;
         });
       });
 
-      const unsubscribeDelivery = chatService.onDelivery(
-        (tempId, messageId) => {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.tempId === tempId
-                ? { ...m, id: messageId, delivered: true, tempId: undefined }
-                : m
-            )
-          );
-        }
-      );
+      // ❗ FIXED DELIVERY HANDLER
+      unsubscribeDelivery = chatService.onDelivery((tempId, messageId) => {
+        setMessages((prev) => {
+          const tempMsg = prev.find((m) => m.tempId === tempId);
+          if (!tempMsg) return prev;
 
-      return () => {
-        unsubscribeMessage();
-        unsubscribeTyping();
-        unsubscribeDelivery();
-      };
+          const finalMsg: ChatMessage = {
+            ...tempMsg,
+            id: messageId,
+            delivered: true,
+            tempId: undefined,
+            timestamp: tempMsg.timestamp ?? new Date().toISOString(), // prevent invalid date
+          };
+
+          const cleaned = prev.filter(
+            (m) => m.tempId !== tempId && m.id !== tempId && m.id !== messageId
+          );
+
+          cleaned.push(finalMsg);
+          return sortMessages(cleaned);
+        });
+      });
+
+      setIsLoading(false);
+    };
+
+    init();
+
+    return () => {
+      unsubscribeMessage?.();
+      unsubscribeTyping?.();
+      unsubscribeDelivery?.();
+    };
+  }, [userId, userName, preventDuplicateMessages]);
+
+  const joinRoom = useCallback(async (roomId: string, roomName: string) => {
+    try {
+      setIsLoading(true);
+      setMessages([]);
+
+      await chatService.joinRoom(roomId, roomName);
+
+      const roomMessages = await chatService.getMessagesForRoom(roomId);
+
+      setMessages(sortMessages(roomMessages));
+      setCurrentRoom(roomId);
+      setMessageOffset(roomMessages.length);
+
+      setTypingUsers([]);
     } catch (error) {
-      console.error("Error initializing chat:", error);
+      console.error("Error joining room:", error);
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const joinRoom = useCallback(
-    async (roomId: string, roomName: string) => {
-      if (currentRoom === roomId) {
-        return;
-      }
-
-      try {
-        setIsLoading(true);
-        await chatService.joinRoom(roomId, roomName);
-
-        const roomMessages = await chatService.getMessagesForRoom(roomId);
-        setMessages(roomMessages);
-        setCurrentRoom(roomId);
-        setMessageOffset(roomMessages.length);
-        setTypingUsers([]);
-      } catch (error) {
-        console.error("Error joining room:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [currentRoom]
-  );
+  }, []);
 
   const sendMessage = useCallback(async (text: string) => {
     try {
@@ -121,30 +143,28 @@ export const useChat = (userId: string, userName: string): UseChatReturn => {
     chatService.stopTyping();
   }, []);
 
-  const loadMoreMessages = useCallback(
-    async () => {
-      if (!currentRoom || isLoading) return;
+  const loadMoreMessages = useCallback(async () => {
+    if (!currentRoom || isLoading) return;
 
-      try {
-        setIsLoading(true);
-        const olderMessages = await chatService.getMessagesForRoom(
-          currentRoom,
-          20,
-          messageOffset
-        );
+    try {
+      setIsLoading(true);
+      const olderMessages = await chatService.getMessagesForRoom(
+        currentRoom,
+        20,
+        messageOffset
+      );
 
-        if (olderMessages.length > 0) {
-          setMessages((prev) => [...olderMessages, ...prev]);
-          setMessageOffset((prev) => prev + olderMessages.length);
-        }
-      } catch (error) {
-        console.error("Error loading more messages:", error);
-      } finally {
-        setIsLoading(false);
+      if (olderMessages.length > 0) {
+        const merged = [...olderMessages, ...messages];
+        setMessages(sortMessages(merged));
+        setMessageOffset((prev) => prev + olderMessages.length);
       }
-    },
-    [currentRoom, messageOffset, isLoading]
-  );
+    } catch (error) {
+      console.error("Error loading more messages:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentRoom, messageOffset, isLoading, messages]);
 
   return {
     messages,

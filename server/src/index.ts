@@ -272,17 +272,25 @@ io.on("connection", (socket: any) => {
     }
 
     const messageData = {
-      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      ...message,
+      id: `srv_${Date.now()}_${socket.id.slice(-8)}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}`,
+      tempId: message.tempId,
+      roomId,
+      userId: message.userId,
+      userName: message.userName,
+      text: message.text,
       timestamp: new Date().toISOString(),
-      deliveredTo: [],
-      readBy: [],
+      delivered: true,
+      read: false,
+      type: "text",
+      reactions: {},
     };
 
     // Save message to room
     room.messages.push(messageData);
 
-    // Broadcast to all users in room
+    // Broadcast to all users in room (including sender)
     io.to(roomId).emit("new_message", messageData);
 
     // Confirm delivery to sender
@@ -296,6 +304,41 @@ io.on("connection", (socket: any) => {
       `Message sent in room ${roomId}:`,
       messageData.text.substring(0, 50)
     );
+  });
+
+  // handle reactions
+  socket.on("toggle_reaction", (data: any) => {
+    const { roomId, messageId, userId, emoji } = data;
+    const room = chatRooms.get(roomId);
+
+    if (!room) return;
+
+    const message = room.messages.find((m: any) => m.id === messageId);
+    if (!message) return;
+
+    if (!message.reactions) {
+      message.reactions = {};
+    }
+    if (!message.reactions[emoji]) {
+      message.reactions[emoji] = [];
+    }
+
+    const alreadyReacted = message.reactions[emoji].includes(userId);
+
+    if (alreadyReacted) {
+      message.reactions[emoji] = message.reactions[emoji].filter(
+        (id: string) => id !== userId
+      );
+      if (message.reactions[emoji].length === 0) {
+        delete message.reactions[emoji];
+      }
+    } else {
+      message.reactions[emoji].push(userId);
+    }
+
+    io.to(roomId).emit("reaction", message);
+
+    console.log(`Reaction updated in room ${roomId}:`, emoji, userId);
   });
 
   // Handle typing indicators
@@ -342,7 +385,6 @@ io.on("connection", (socket: any) => {
         }
       });
 
-      // Notify other users of read receipts
       socket.to(roomId).emit("messages_read", {
         messageIds,
         userId,
@@ -356,7 +398,6 @@ io.on("connection", (socket: any) => {
 
     socket.join(roomId);
 
-    // Get or create collaborative room
     if (!collaborativeRooms.has(roomId)) {
       collaborativeRooms.set(roomId, new CollaborativeRoom(roomId));
     }
@@ -364,23 +405,20 @@ io.on("connection", (socket: any) => {
     const room = collaborativeRooms.get(roomId);
     room.addParticipant(userId, userName, socket.id);
 
-    // Send current state to new participant
     socket.emit("collaborative_state_sync", {
       roomId,
       sharedState: room.sharedState,
-      operationHistory: room.operationHistory.slice(-20), // Last 20 operations
+      operationHistory: room.operationHistory.slice(-20),
       participants: room.getParticipantsList(),
       activeEditors: room.getActiveEditors(),
     });
 
-    // Notify others of new participant
     socket.to(roomId).emit("participant_joined", {
       userId,
       userName,
       timestamp: new Date().toISOString(),
     });
 
-    // Broadcast updated participant list
     io.to(roomId).emit("participants_updated", {
       participants: room.getParticipantsList(),
     });
@@ -395,10 +433,8 @@ io.on("connection", (socket: any) => {
       return;
     }
 
-    // Apply operation and get timestamped version
     const processedOperation = room.applyOperation(operation);
 
-    // Broadcast to all clients in room
     io.to(roomId).emit("operation_applied", {
       operation: processedOperation,
       sharedState: room.sharedState,
@@ -432,7 +468,6 @@ io.on("connection", (socket: any) => {
     });
 
     if (result.success) {
-      // Notify others that this field is being edited
       socket.to(roomId).emit("field_locked", {
         field,
         userId,
@@ -448,7 +483,6 @@ io.on("connection", (socket: any) => {
     if (room) {
       room.stopEditing(userId, field);
 
-      // Notify others that field is available
       socket.to(roomId).emit("field_unlocked", {
         field,
         userId,
@@ -463,7 +497,6 @@ io.on("connection", (socket: any) => {
     if (room) {
       room.updatePresence(userId, presenceData);
 
-      // Broadcast presence update to others
       socket.to(roomId).emit("presence_updated", {
         userId,
         presenceData,
@@ -482,7 +515,6 @@ io.on("connection", (socket: any) => {
         participant.isActive = isActive;
         participant.lastActivity = new Date().toISOString();
 
-        // Broadcast activity change
         socket.to(roomId).emit("user_activity_updated", {
           userId,
           isActive,
@@ -506,7 +538,6 @@ io.on("connection", (socket: any) => {
         room.participants.delete(userToRemove.userId);
         room.typingUsers.delete(userToRemove.userId);
 
-        // Notify others of user leaving
         socket.to(roomId).emit("user_left_room", {
           userId: userToRemove.userId,
           userName: userToRemove.userName,

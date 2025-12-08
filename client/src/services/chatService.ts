@@ -1,5 +1,9 @@
-import { socketService } from '@/src/services/socketService';
-import { chatDatabaseService, ChatMessage, ChatRoom } from '@/src/services/chatDatabase';
+import { socketService } from "@/src/services/socketService";
+import {
+  chatDatabaseService,
+  ChatMessage,
+  ChatRoom,
+} from "@/src/services/chatDatabase";
 
 export interface TypingUser {
   userId: string;
@@ -21,83 +25,86 @@ class ChatService {
   private currentRoomId: string | null = null;
   private typingTimeout: NodeJS.Timeout | null = null;
   private listenersInitialized = false;
+  private initialized = false;
 
+  private messageCounter = 0;
 
-  // Event listeners
   private messageListeners: ((message: ChatMessage) => void)[] = [];
   private typingListeners: ((typingUser: TypingUser) => void)[] = [];
   private presenceListeners: ((users: ChatUser[]) => void)[] = [];
-  private deliveryListeners: ((tempId: string, messageId: string) => void)[] = [];
+  private deliveryListeners: ((tempId: string, messageId: string) => void)[] =
+    [];
 
-  // reaction listeners
   private reactionListeners: ((message: ChatMessage) => void)[] = [];
 
   async initialize(userId: string, userName: string): Promise<void> {
+    if (this.initialized && this.currentUserId === userId) {
+      return;
+    }
+
+    this.initialized = true;
     this.currentUserId = userId;
     this.currentUserName = userName;
-    
+
+    socketService.connect();
+
     await chatDatabaseService.initializeDatabase();
     this.setupSocketListeners();
-    
-    // Join user session
-    socketService.emit('user_join', {
+
+    socketService.emit("user_join", {
       userId,
       userName,
       timestamp: new Date().toISOString(),
     });
   }
 
-private setupSocketListeners(): void {
-  if (this.listenersInitialized) return;
-  this.listenersInitialized = true;
+  private setupSocketListeners(): void {
+    if (this.listenersInitialized) return;
+    this.listenersInitialized = true;
 
-  // Handle new messages
-  socketService.on("new_message", (message: ChatMessage) => {
-    this.handleNewMessage(message);
-  });
+    socketService.on("new_message", (message: ChatMessage) => {
+      this.handleNewMessage(message);
+    });
 
-  // Handle typing indicators
-  socketService.on("user_typing", (data: TypingUser) => {
-    this.notifyTypingListeners(data);
-  });
+    socketService.on("user_typing", (data: TypingUser) => {
+      this.notifyTypingListeners(data);
+    });
 
-  // Handle message delivery confirmation
-  socketService.on(
-    "message_delivered",
-    (data: { tempId: string; messageId: string; timestamp: string }) => {
-      this.handleMessageDelivered(data.tempId, data.messageId);
-    }
-  );
+    socketService.on(
+      "message_delivered",
+      (data: { tempId: string; messageId: string; timestamp: string }) => {
+        this.handleMessageDelivered(data.tempId, data.messageId);
+      }
+    );
 
-  // Handle room joined
-  socketService.on(
-    "room_joined",
-    async (data: { roomId: string; messages: ChatMessage[]; participants: ChatUser[] }) => {
-      await this.handleRoomJoined(data);
-    }
-  );
+    socketService.on(
+      "room_joined",
+      async (data: {
+        roomId: string;
+        messages: ChatMessage[];
+        participants: ChatUser[];
+      }) => {
+        await this.handleRoomJoined(data);
+      }
+    );
 
-  // Handle reactions
-  socketService.on("reaction", async (updatedMessage: ChatMessage) => {
-    await chatDatabaseService.saveMessage(updatedMessage);
-    this.notifyReactionListeners(updatedMessage);
-  });
-}
-
+    socketService.on("reaction", async (updatedMessage: ChatMessage) => {
+      await chatDatabaseService.saveMessage(updatedMessage);
+      this.notifyReactionListeners(updatedMessage);
+    });
+  }
 
   async joinRoom(roomId: string, roomName: string): Promise<void> {
     this.currentRoomId = roomId;
-    
-    // Create/update room in local database
+
     await chatDatabaseService.createOrUpdateRoom({
       id: roomId,
       name: roomName,
       unreadCount: 0,
       participants: [this.currentUserId!],
     });
-    
-    // Join room on server
-    socketService.emit('join_room', {
+
+    socketService.emit("join_room", {
       roomId,
       userId: this.currentUserId,
       userName: this.currentUserName,
@@ -106,13 +113,15 @@ private setupSocketListeners(): void {
 
   async sendMessage(text: string): Promise<void> {
     if (!this.currentRoomId || !this.currentUserId || !this.currentUserName) {
-      throw new Error('Not connected to a room');
+      throw new Error("Not connected to a room");
     }
-    
-    const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-   
+
+    const tempId = `client_${Date.now()}_${++this.messageCounter}_${Math.random()
+      .toString(36)
+      .substr(2, 8)}`;
+
     const message: ChatMessage = {
-      id: tempId, // Will be replaced when server confirms
+      id: tempId,
       tempId,
       roomId: this.currentRoomId,
       userId: this.currentUserId,
@@ -120,62 +129,60 @@ private setupSocketListeners(): void {
       text,
       timestamp: new Date().toISOString(),
       delivered: false,
-      read: true, // Own messages are considered read
-      type: 'text',
-      // setting up reactions 
+      read: true,
+      type: "text",
       reactions: {},
     };
 
-    // Save optimistically to local database
     await chatDatabaseService.saveMessage(message);
-    
-    // Notify UI immediately
+
     this.notifyMessageListeners(message);
 
-    // Send to server
-    socketService.emit('send_message', {
+    socketService.emit("send_message", {
       roomId: this.currentRoomId,
       message: {
         tempId,
         userId: this.currentUserId,
         userName: this.currentUserName,
         text,
-        type: 'text',
+        type: "text",
       },
     });
   }
 
   async toggleReaction(messageId: string, emoji: string): Promise<void> {
-  if (!this.currentRoomId || !this.currentUserId) return;
+    if (!this.currentRoomId || !this.currentUserId) return;
 
-  socketService.emit('toggle_reaction', {
-    roomId: this.currentRoomId,
-    messageId,
-    userId: this.currentUserId,
-    emoji,
-  });
-}
-  
+    socketService.emit("toggle_reaction", {
+      roomId: this.currentRoomId,
+      messageId,
+      userId: this.currentUserId,
+      emoji,
+    });
+  }
+
   startTyping(): void {
-    if (!this.currentRoomId || !this.currentUserId || !this.currentUserName) return;
-    socketService.emit('typing_start', {
+    if (!this.currentRoomId || !this.currentUserId || !this.currentUserName)
+      return;
+    socketService.emit("typing_start", {
       roomId: this.currentRoomId,
       userId: this.currentUserId,
       userName: this.currentUserName,
     });
-    // Auto-stop typing after 3 seconds
+
     if (this.typingTimeout) {
       clearTimeout(this.typingTimeout);
     }
-    
+
     this.typingTimeout = setTimeout(() => {
       this.stopTyping();
     }, 3000);
   }
-  
+
   stopTyping(): void {
-    if (!this.currentRoomId || !this.currentUserId || !this.currentUserName) return;
-    socketService.emit('typing_stop', {
+    if (!this.currentRoomId || !this.currentUserId || !this.currentUserName)
+      return;
+    socketService.emit("typing_stop", {
       roomId: this.currentRoomId,
       userId: this.currentUserId,
       userName: this.currentUserName,
@@ -185,82 +192,106 @@ private setupSocketListeners(): void {
       this.typingTimeout = null;
     }
   }
- 
-  async getMessagesForRoom(roomId: string, limit: number = 50, offset: number = 0): Promise<ChatMessage[]> {
+
+  async getMessagesForRoom(
+    roomId: string,
+    limit: number = 50,
+    offset: number = 0
+  ): Promise<ChatMessage[]> {
     return await chatDatabaseService.getMessagesForRoom(roomId, limit, offset);
   }
-  
+
   async getAllRooms(): Promise<ChatRoom[]> {
     return await chatDatabaseService.getAllRooms();
   }
-  
-private async handleNewMessage(message: ChatMessage): Promise<void> {
-  // only processes the messages that belong to the room that is currently opened
-  if (message.roomId !== this.currentRoomId) return;
 
-  await chatDatabaseService.saveMessage(message);
-  this.notifyMessageListeners(message);
-}
+  private async handleNewMessage(message: ChatMessage): Promise<void> {
+    if (message.roomId !== this.currentRoomId) return;
 
-  
-  private async handleMessageDelivered(tempId: string, messageId: string): Promise<void> {
-    // Update local database
-    await chatDatabaseService.updateMessageDeliveryStatus(tempId, messageId, true);
-    
-    // Notify UI
+    this.notifyMessageListeners(message);
+  }
+
+  private async handleMessageDelivered(
+    tempId: string,
+    messageId: string
+  ): Promise<void> {
+    await chatDatabaseService.updateMessageDeliveryStatus(
+      tempId,
+      messageId,
+      true
+    );
+
     this.notifyDeliveryListeners(tempId, messageId);
   }
-  
-  private async handleRoomJoined(data: { roomId: string; messages: ChatMessage[]; participants: ChatUser[] }): Promise<void> {
-    // Save historical messages to local database
-    for (const message of data.messages) {
-      await chatDatabaseService.saveMessage(message);
-    }
+
+  private async handleRoomJoined(data: {
+    roomId: string;
+    messages: ChatMessage[];
+    participants: ChatUser[];
+  }): Promise<void> {
+    // let useChat fetch messages instead
   }
-  
-  // Event listener management
+
   onMessage(callback: (message: ChatMessage) => void): () => void {
-    this.messageListeners.push(callback);
+    if (!this.messageListeners.includes(callback)) {
+      this.messageListeners.push(callback);
+    }
     return () => {
-      this.messageListeners = this.messageListeners.filter(cb => cb !== callback);
+      this.messageListeners = this.messageListeners.filter(
+        (cb) => cb !== callback
+      );
     };
   }
 
   onTyping(callback: (typingUser: TypingUser) => void): () => void {
-    this.typingListeners.push(callback);
+    if (!this.typingListeners.includes(callback)) {
+      this.typingListeners.push(callback);
+    }
     return () => {
-      this.typingListeners = this.typingListeners.filter(cb => cb !== callback);
+      this.typingListeners = this.typingListeners.filter(
+        (cb) => cb !== callback
+      );
     };
   }
 
-  onDelivery(callback: (tempId: string, messageId: string) => void): () => void {
-    this.deliveryListeners.push(callback);
+  onDelivery(
+    callback: (tempId: string, messageId: string) => void
+  ): () => void {
+    if (!this.deliveryListeners.includes(callback)) {
+      this.deliveryListeners.push(callback);
+    }
     return () => {
-      this.deliveryListeners = this.deliveryListeners.filter(cb => cb !== callback);
+      this.deliveryListeners = this.deliveryListeners.filter(
+        (cb) => cb !== callback
+      );
     };
   }
 
   onReaction(callback: (message: ChatMessage) => void): () => void {
-    this.reactionListeners.push(callback);
+    if (!this.reactionListeners.includes(callback)) {
+      this.reactionListeners.push(callback);
+    }
     return () => {
-      this.reactionListeners = this.reactionListeners.filter(cb => cb !== callback);
+      this.reactionListeners = this.reactionListeners.filter(
+        (cb) => cb !== callback
+      );
     };
   }
 
   private notifyMessageListeners(message: ChatMessage): void {
-    this.messageListeners.forEach(callback => callback(message));
+    this.messageListeners.forEach((callback) => callback(message));
   }
 
   private notifyTypingListeners(typingUser: TypingUser): void {
-    this.typingListeners.forEach(callback => callback(typingUser));
+    this.typingListeners.forEach((callback) => callback(typingUser));
   }
 
   private notifyDeliveryListeners(tempId: string, messageId: string): void {
-    this.deliveryListeners.forEach(callback => callback(tempId, messageId));
+    this.deliveryListeners.forEach((callback) => callback(tempId, messageId));
   }
 
   private notifyReactionListeners(message: ChatMessage): void {
-    this.reactionListeners.forEach(callback => callback(message));
+    this.reactionListeners.forEach((callback) => callback(message));
   }
 }
 

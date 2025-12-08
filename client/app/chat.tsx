@@ -14,11 +14,9 @@ import { useChat } from "@/src/hooks/useChat";
 import { ChatMessage } from "@/src/services/chatDatabase";
 import { useRouter } from "expo-router";
 
-// You would get these from user authentication
 const CURRENT_USER_ID = "user_123";
 const CURRENT_USER_NAME = "John Doe";
 
-// hard coded rooms for pre-existing channels
 const ROOMS = [
   { id: "general", label: "General Chat" },
   { id: "project", label: "Group Project Chat" },
@@ -43,6 +41,14 @@ export default function ChatScreen() {
     loadMoreMessages,
   } = useChat(CURRENT_USER_ID, CURRENT_USER_NAME);
 
+  // 🚀 AUTO-JOIN GENERAL ON FIRST LOAD — BLOCK UI UNTIL JOINED
+  useEffect(() => {
+    if (!currentRoom) {
+      joinRoom("general", "General Chat");
+    }
+  }, [currentRoom, joinRoom]);
+
+  // keep list scrolled to bottom on new messages
   useEffect(() => {
     if (messages.length > 0) {
       setTimeout(() => {
@@ -51,14 +57,15 @@ export default function ChatScreen() {
     }
   }, [messages]);
 
-  useEffect(() => {
-    if (!currentRoom) {
-      joinRoom("general", "General Chat");
-    }
-  }, [currentRoom, joinRoom]);
-
   const handleSendMessage = async () => {
     if (!inputText.trim()) return;
+
+    // 🚨 Prevent sending until room is fully joined
+    if (!currentRoom) {
+      console.warn("Tried to send before room was joined");
+      return;
+    }
+
     await sendMessage(inputText.trim());
     setInputText("");
     handleStopTyping();
@@ -91,6 +98,7 @@ export default function ChatScreen() {
             {item.userName}
           </Text>
         )}
+
         <View
           className={`max-w-3/4 p-3 rounded-2xl ${
             isOwnMessage
@@ -103,6 +111,20 @@ export default function ChatScreen() {
             }`}>
             {item.text}
           </Text>
+
+          {item.reactions && Object.keys(item.reactions).length > 0 && (
+            <View className="flex-row flex-wrap mt-2">
+              {Object.entries(item.reactions).map(([emoji, users]) => (
+                <View
+                  key={emoji}
+                  className="px-2 py-1 mr-1 mb-1 bg-white/20 rounded-full flex-row items-center">
+                  <Text className="mr-1">{emoji}</Text>
+                  <Text className="text-xs text-white">{users.length}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
           <View className="flex-row items-center justify-between mt-1">
             <Text
               className={`text-xs ${
@@ -115,6 +137,7 @@ export default function ChatScreen() {
                 minute: "2-digit",
               })}
             </Text>
+
             {isOwnMessage && (
               <Text className="text-xs text-blue-100 ml-2">
                 {item.delivered ? "Delivered" : "Sent"}
@@ -140,20 +163,26 @@ export default function ChatScreen() {
     );
   };
 
+  // 👉 BLOCK all UI until a room is actually joined
+  if (!currentRoom) {
+    return (
+      <SafeAreaView className="flex-1 items-center justify-center bg-gray-900">
+        <Text className="text-white text-lg">Joining chat…</Text>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView className="flex-1 bg-gray-50 dark:bg-gray-900">
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         className="flex-1">
-        {/* back btn */}
-
         <TouchableOpacity
           onPress={() => router.push("/")}
           className="px-4 py-2 pt-5">
           <Text className="text-blue-500 text-base">Go Back</Text>
         </TouchableOpacity>
 
-        {/* room selection */}
         <View className="flex-row px-4 pt-3 space-x-2">
           {ROOMS.map((room) => {
             const isActive = currentRoom === room.id;
@@ -180,12 +209,7 @@ export default function ChatScreen() {
         </View>
 
         <Text className="text-lg font-semibold align-center text-gray-800 dark:text-white pt-5 pl-5">
-          {currentRoom
-            ? currentRoom === "general"
-              ? "General Chat"
-              : currentRoom.charAt(0).toUpperCase() +
-                currentRoom.slice(1).replace(/_/g, " ")
-            : "Loading..."}
+          {currentRoom}
         </Text>
 
         <FlatList
@@ -204,7 +228,7 @@ export default function ChatScreen() {
         <View className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 py-3">
           <View className="flex-row items-end">
             <TextInput
-              className="flex-1 border border-gray-300 dark:border-gray-600 rounded-full px-4 py-2 mr-2 pl-6 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-white pt-6 pb-6"
+              className="flex-1 border border-gray-300 dark:border-gray-600 rounded-full px-4 py-2 mr=2 pl-6 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-white pt-6 pb-6"
               placeholder="Type a message..."
               placeholderTextColor="#9CA3AF"
               value={inputText}
@@ -219,7 +243,7 @@ export default function ChatScreen() {
                   handleSendMessage();
                 }
               }}
-            />{" "}
+            />
             <TouchableOpacity
               className={`rounded-full p-6 pl-8 pr-8 ${
                 inputText.trim()

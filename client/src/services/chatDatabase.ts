@@ -16,6 +16,7 @@ export interface ChatMessage {
     [emoji: string]: string[];
   };
 }
+
 export interface ChatRoom {
   id: string;
   name: string;
@@ -78,6 +79,16 @@ class ChatDatabaseService {
           FOREIGN KEY (room_id) REFERENCES chat_rooms (id)
         );
       `);
+
+      // ⭐ FIX 2A: Add reactions column if missing
+      try {
+        await this.db.execAsync(`
+          ALTER TABLE chat_messages 
+          ADD COLUMN reactions TEXT DEFAULT '{}'
+        `);
+      } catch (e) {
+        // Duplicate column — ignore
+      }
 
       await this.db.execAsync(`
         CREATE INDEX IF NOT EXISTS idx_messages_room_timestamp 
@@ -160,58 +171,60 @@ class ChatDatabaseService {
   }
 
   async saveMessage(message: ChatMessage): Promise<void> {
-    if (Platform.OS === "web") {
-      if (!this.webMessages[message.roomId]) {
-        this.webMessages[message.roomId] = [];
-      }
-
-      const roomMessages = this.webMessages[message.roomId];
-      const idx = roomMessages.findIndex((m) => m.id === message.id);
-
-      if (idx >= 0) {
-        roomMessages[idx] = message;
-      } else {
-        roomMessages.push({ ...message });
-      }
-      localStorage.setItem("chat_messages", JSON.stringify(this.webMessages));
-
-      return;
+  if (Platform.OS === "web") {
+    if (!this.webMessages[message.roomId]) {
+      this.webMessages[message.roomId] = [];
     }
 
-    if (!this.db) throw new Error("Database not initialized");
+    const roomMessages = this.webMessages[message.roomId];
 
-    try {
-      await this.db.runAsync(
-        `
-        INSERT OR REPLACE INTO chat_messages 
-        (id, temp_id, room_id, user_id, user_name, text, timestamp, delivered, read, type, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-        [
-          message.id,
-          message.tempId || null,
-          message.roomId,
-          message.userId,
-          message.userName,
-          message.text,
-          message.timestamp,
-          message.delivered ? 1 : 0,
-          message.read ? 1 : 0,
-          message.type,
-          new Date().toISOString(),
-        ]
-      );
-
-      await this.updateRoomLastMessage(
-        message.roomId,
-        message.text,
-        message.timestamp
-      );
-    } catch (error) {
-      console.error("Error saving message:", error);
-      throw error;
+    // prevent duplicates
+    const idx = roomMessages.findIndex((m) => m.id === message.id);
+    if (idx >= 0) {
+      roomMessages[idx] = message;
+    } else {
+      roomMessages.push({ ...message });
     }
+
+    localStorage.setItem("chat_messages", JSON.stringify(this.webMessages));
+    return;
   }
+
+  if (!this.db) throw new Error("Database not initialized");
+
+  try {
+    await this.db.runAsync(
+      `
+      INSERT OR IGNORE INTO chat_messages 
+(id, temp_id, room_id, user_id, user_name, text, timestamp, delivered, read, type, reactions, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+      [
+        message.id,
+        message.tempId || null,
+        message.roomId,
+        message.userId,
+        message.userName,
+        message.text,
+        message.timestamp,
+        message.delivered ? 1 : 0,
+        message.read ? 1 : 0,
+        message.type,
+        JSON.stringify(message.reactions || {}),
+        new Date().toISOString(),
+      ]
+    );
+
+    await this.updateRoomLastMessage(
+      message.roomId,
+      message.text,
+      message.timestamp
+    );
+  } catch (error) {
+    console.error("Error saving message:", error);
+    throw error;
+  }
+}
 
   async getMessagesForRoom(
     roomId: string,
@@ -250,6 +263,7 @@ class ChatDatabaseService {
           delivered: Boolean(row.delivered),
           read: Boolean(row.read),
           type: row.type as "text" | "system" | "typing",
+          reactions: row.reactions ? JSON.parse(row.reactions) : {},
         }))
         .reverse();
     } catch (error) {
@@ -275,7 +289,6 @@ class ChatDatabaseService {
         }
       }
       localStorage.setItem("chat_messages", JSON.stringify(this.webMessages));
-
       return;
     }
 
@@ -308,7 +321,6 @@ class ChatDatabaseService {
         }
       });
       localStorage.setItem("chat_messages", JSON.stringify(this.webMessages));
-
       return;
     }
 
@@ -357,9 +369,7 @@ class ChatDatabaseService {
   }
 
   private async updateUnreadCount(roomId: string): Promise<void> {
-    if (Platform.OS === "web") {
-      return;
-    }
+    if (Platform.OS === "web") return;
 
     const result = await this.db!.getFirstAsync(
       `

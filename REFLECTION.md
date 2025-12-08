@@ -2,15 +2,15 @@
 
 <blockquote>How did you handle the complexity of managing multiple chat channels?</blockquote>
 <br>
-<p>here</p>
+<p>Creating the chatrooms themselves wasn't that difficult once I understood the way they were constructed and conceptualized them like navigation links or routes like we have done in previous projects. Creating that model wasn't as difficult to implement and keep relatively consistent all the way through.</p>
 
 <blockquote>What was most challenging about implementing user presence across channels?</blockquote>
 <br>
-<p>Answer</p>
+<p>This was actually one of the easier tasks for me to accomplish because the built-in-rooms that come with Socket.IO and the participant map that made it relatively simple for the acknowledgement of another user being online, but only in the collaborative task section. I couldn't get far enough in the chat rooms to have online user presence available in the chat as I was way too busy trying and failing to figure out why my messages kept spamming. I literally created the debugging assignment myself without needing the problematic files. The only difference is that I was actually able to figure out the issues in that assignment.</p>
 
 <blockquote>How does your offline message handling compare to apps like Slack or Discord?</blockquote>
 <br>
-<p>Answer</p>
+<p>I was unable to get my offline messaging to function correctly. They do eventually sync up when going in between rooms in offline mode, but I simply could not get my chatMessages to work in general. Every time the screen was remounted/unmounted, somewhere along the line I didn't code/attach my listeners properly. The real-time flow of my application kept breaking and I couldn't get the messages to appear across platforms - especially in the iOS version. The messages sent from the iOS would eventually appear in the browser when it was offline and in-between the spamming of messages that kept piling up no matter how many times I cleared my local storage cache.</p>
 
 <blockquote>What would you improve about the user experience with more time?</blockquote>
 <br>
@@ -18,14 +18,4 @@
 
 <blockquote>How did you ensure consistent real-time behavior across platforms?</blockquote>
 <br>
-<p>Answer</p>
-
-<blockquote>Additional thoughts regarding the development process (just things that came across during the week that I wanted to document that doesn't fall under any of the other categories)</blockquote>
-<br>
-<p>Honestly, this was a difficult project to accomplish on many fronts. My project server side was created with a TypeScript base which automatically set me up for some struggles trying to implement the files that were given to us since they were all written with common JS. I had to look through a lot of documentation and forums to clear all the errors and make everything copasetic. It got there, though! And the whole process, as frustrating as it was, helped me understand just how picky the whole TypeScript versus common JS situation really is. Next time, I will be more careful about making sure I initialize my project using the same coding language as the files provided to me to avoid all of the headache. Sometimes it is difficult to keep everything the same when some of the imports are out of date.
-
-My only suggestion for these assignments in the future is providing us an install list with the versions attached so when we start up our projects, we are all using the same versions. I think we did this with last week's assignment and it was a huge help!
-
-One problem that began to arise after I started running client and server sides simultaneously was with the Socket service that pretty much poetically reflected the debugging assignment with too many attached event listeners. The useSocket.ts file inside my hooks had listeners but the ConnectionManager file inside the services folder had already ran the constructor when it was imported, way before the socketService.connect() function was ever called. This created a hanging message on the UI: "Connecting..." because listeners were attached to nothing - the ConnectionManager was registering the listeners to a null socket because useSocket was the actual socket.
-
-This is what I ended up doing: in my useSocket.ts file, I removed the socketService.connect() function and replaced the socketService event listeners with the listeners established in the ConnectionManager file. I kept all of the cleanup and return logic the same. Everything inside the ConnectionManager file was left the same. I also had some issues with my logic in the chatDatabase file with the web version not wanting to save messages because of the way I had coded in my SQLite exception. I also had to make some changes to my socketService.ts file by adding a buffer between registered listeners before the socket is established, then attaching those listeners when connect() runs.</p>
+<p>I could not get my behavior to be consistent in real time across platforms other than user presence and acknowledging that a user is typing in the chat. Delivery status and offline persistence isn't functional, or at least not as expected. I tried to make my keys unique to avoid the unmounting/remounting viewing it all as new content, however I ran out of time to actually fix it. I kept frantically making changes that at the end of the day, I don't really know what I did. All I can say for sure is restarting the project from fresh probably would've allowed me to solve it because I changed too much to make the current version of my project (in my opinion) worth saving. </p>
